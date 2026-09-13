@@ -17,7 +17,7 @@ class OpenSslDtlsTransport:
         bridge_ip: str,
         application_id: str,
         client_key: str,
-        connect_timeout_seconds: float = 8.0,
+        connect_timeout_seconds: float = 5.0,
         popen_factory=subprocess.Popen,
     ):
         self.bridge_ip = bridge_ip

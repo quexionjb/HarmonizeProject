@@ -1,4 +1,5 @@
-import threading
+from dataclasses import replace
+import time
 import unittest
 
 import numpy as np
@@ -22,9 +23,22 @@ class FakeHue:
     def __init__(self):
         self.actions = []
         self.fail_start = False
+        self.fail_resolve = False
 
     def application_id(self):
         return "test-app"
+
+    def resolve_name(self, name):
+        if self.fail_resolve:
+            raise HarmonizeError(f'area "{name}" was not found')
+        if name != AREA.name:
+            raise HarmonizeError("unexpected area")
+        status = (
+            "active"
+            if ("start", AREA.name) in self.actions
+            else "inactive"
+        )
+        return replace(AREA, status=status)
 
     def start_streaming(self, area):
         self.actions.append(("start", area.name))
@@ -43,6 +57,7 @@ class FakeCapture:
         self.reset_requested = False
         self.reset_count = 0
         self.frame = np.full((4, 4, 3), (10, 20, 30), dtype=np.uint8)
+        self.last_frame_monotonic = None
 
     def open(self):
         if self.fail_open:
@@ -50,6 +65,7 @@ class FakeCapture:
         self.opened = True
 
     def read(self):
+        self.last_frame_monotonic = 1.0
         return self.frame.copy()
 
     def request_reset(self):
@@ -71,6 +87,7 @@ class FakeTransport:
     fail_start = False
     fail_send = False
     fail_close = False
+    fail_send_count = 0
 
     def __init__(self, **kwargs):
         self.started = False
@@ -84,6 +101,9 @@ class FakeTransport:
         self.started = True
 
     def send(self, packet):
+        if type(self).fail_send_count:
+            type(self).fail_send_count -= 1
+            raise HarmonizeError("injected transient send failure")
         if self.fail_send:
             raise HarmonizeError("injected send failure")
         self.packets.append(packet)
@@ -105,6 +125,9 @@ def controller(hue, capture):
         update_interval_seconds=0.001,
         single_light=False,
         auto_restart_seconds=0,
+        transport_reconnect_attempts=0,
+        transport_reconnect_initial_seconds=0.001,
+        hue_status_interval_seconds=60,
         transport_factory=FakeTransport,
     )
 
@@ -115,6 +138,7 @@ class ControllerTests(unittest.TestCase):
         FakeTransport.fail_start = False
         FakeTransport.fail_send = False
         FakeTransport.fail_close = False
+        FakeTransport.fail_send_count = 0
 
     def test_streaming_session_reaches_ready_and_cleans_up(self):
         hue = FakeHue()
@@ -131,6 +155,10 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(capture.closed)
         self.assertTrue(FakeTransport.instances[0].closed)
         self.assertTrue(FakeTransport.instances[0].packets)
+        snapshot = subject.health_snapshot()
+        self.assertEqual(snapshot["state"], "IDLE")
+        self.assertFalse(snapshot["alive"])
+        self.assertFalse(snapshot["ready"])
 
     def test_capture_failure_does_not_start_hue(self):
         hue = FakeHue()
@@ -140,6 +168,17 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(subject.state, LifecycleState.ERROR)
         self.assertEqual(hue.actions, [])
         self.assertTrue(capture.closed)
+
+    def test_startup_revalidation_failure_acquires_no_resources(self):
+        hue = FakeHue()
+        hue.fail_resolve = True
+        capture = FakeCapture()
+        subject = controller(hue, capture)
+        subject.run()
+        self.assertEqual(subject.state, LifecycleState.ERROR)
+        self.assertFalse(capture.opened)
+        self.assertTrue(capture.closed)
+        self.assertEqual(hue.actions, [])
 
     def test_transport_start_failure_stops_hue(self):
         FakeTransport.fail_start = True
@@ -185,6 +224,45 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(subject.state, LifecycleState.ERROR)
         self.assertTrue(capture.closed)
         self.assertEqual(hue.actions, [("start", "TV area"), ("stop", "TV area")])
+
+    def test_stop_request_is_idempotent(self):
+        hue = FakeHue()
+        capture = FakeCapture()
+        subject = controller(hue, capture)
+        subject.start_background()
+        self.assertTrue(subject.ready.wait(1.0))
+        subject.request_stop("SIGTERM")
+        subject.request_stop("SIGINT")
+        subject.join(1.0)
+        self.assertEqual(hue.actions.count(("stop", "TV area")), 1)
+
+    def test_transient_transport_failure_recovers(self):
+        FakeTransport.fail_send_count = 1
+        hue = FakeHue()
+        capture = FakeCapture()
+        subject = controller(hue, capture)
+        subject.transport_reconnect_attempts = 2
+        subject.start_background()
+        self.assertTrue(subject.ready.wait(1.0))
+        deadline = time.monotonic() + 1.0
+        while len(FakeTransport.instances) < 2:
+            if time.monotonic() >= deadline:
+                self.fail("transport recovery did not create a replacement")
+            time.sleep(0.001)
+        subject.request_stop()
+        subject.join(1.0)
+        self.assertEqual(subject.state, LifecycleState.IDLE)
+        self.assertIsNone(subject.error)
+        self.assertEqual(
+            hue.actions,
+            [
+                ("start", "TV area"),
+                ("stop", "TV area"),
+                ("start", "TV area"),
+                ("stop", "TV area"),
+            ],
+        )
+        self.assertTrue(FakeTransport.instances[0].closed)
 
 
 if __name__ == "__main__":

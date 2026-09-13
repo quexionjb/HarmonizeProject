@@ -1,6 +1,14 @@
 import unittest
 
-from harmonize_core.cli import build_parser
+from harmonize_core.cli import ShutdownCoordinator, build_parser
+
+
+class FakeController:
+    def __init__(self):
+        self.reasons = []
+
+    def request_stop(self, reason):
+        self.reasons.append(reason)
 
 
 class CliTests(unittest.TestCase):
@@ -45,6 +53,20 @@ class CliTests(unittest.TestCase):
     def test_default_config_startup_wait_is_positive(self):
         args = build_parser().parse_args(["--config", "harmonize.example.toml"])
         self.assertIsNone(args.video_wait_time)
+
+    def test_shutdown_coordinator_is_idempotent(self):
+        controller = FakeController()
+        coordinator = ShutdownCoordinator(controller)
+        coordinator.request("SIGTERM")
+        coordinator.request("SIGINT")
+        self.assertEqual(controller.reasons, ["SIGTERM"])
+        self.assertEqual(coordinator.reason, "SIGTERM")
+
+    def test_failure_injection_choices_are_explicit(self):
+        args = build_parser().parse_args(
+            ["--inject-failure", "after_hue_start"]
+        )
+        self.assertEqual(args.inject_failure, "after_hue_start")
 
 
 if __name__ == "__main__":

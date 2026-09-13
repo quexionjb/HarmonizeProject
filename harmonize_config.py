@@ -55,12 +55,27 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class ReliabilityConfig:
+    startup_timeout_seconds: float = 10.0
+    shutdown_timeout_seconds: float = 15.0
+    capture_read_timeout_seconds: float = 2.0
+    capture_reconnect_initial_seconds: float = 0.5
+    capture_reconnect_max_seconds: float = 5.0
+    transport_reconnect_attempts: int = 3
+    transport_reconnect_initial_seconds: float = 0.5
+    hue_status_interval_seconds: float = 10.0
+    health_interval_seconds: float = 1.0
+    health_file: Path | None = None
+
+
+@dataclass(frozen=True)
 class HarmonizeConfig:
     hue: HueConfig
     capture: CaptureConfig
     control: ControlConfig
     ambilight: AmbilightConfig
     logging: LoggingConfig
+    reliability: ReliabilityConfig
     source_file: Path
 
 
@@ -71,7 +86,14 @@ class HueCredentials:
     warnings: tuple[str, ...] = ()
 
 
-_SECTIONS = {"hue", "capture", "control", "ambilight", "logging"}
+_SECTIONS = {
+    "hue",
+    "capture",
+    "control",
+    "ambilight",
+    "logging",
+    "reliability",
+}
 _KEYS = {
     "hue": {"entertainment_area", "credentials_file", "bridge_ip"},
     "capture": {"device_index", "backend", "stream_source"},
@@ -86,6 +108,18 @@ _KEYS = {
         "post_stream_behavior",
     },
     "logging": {"level"},
+    "reliability": {
+        "startup_timeout_seconds",
+        "shutdown_timeout_seconds",
+        "capture_read_timeout_seconds",
+        "capture_reconnect_initial_seconds",
+        "capture_reconnect_max_seconds",
+        "transport_reconnect_attempts",
+        "transport_reconnect_initial_seconds",
+        "hue_status_interval_seconds",
+        "health_interval_seconds",
+        "health_file",
+    },
 }
 
 
@@ -190,6 +224,7 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
     control_values = _table(document, "control")
     ambilight_values = _table(document, "ambilight")
     logging_values = _table(document, "logging")
+    reliability_values = _table(document, "reliability")
 
     area = _string(hue_values, "entertainment_area", optional=True)
     if unattended and area is None:
@@ -231,6 +266,34 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
     if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
         raise ConfigError(
             "logging.level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+        )
+
+    health_file_name = _string(
+        reliability_values, "health_file", optional=True
+    )
+    health_file = None
+    if health_file_name is not None:
+        health_file = Path(health_file_name).expanduser()
+        if not health_file.is_absolute():
+            health_file = source.parent / health_file
+        health_file = health_file.resolve()
+
+    capture_reconnect_initial = _number(
+        reliability_values,
+        "capture_reconnect_initial_seconds",
+        0.5,
+        minimum=0.01,
+    )
+    capture_reconnect_max = _number(
+        reliability_values,
+        "capture_reconnect_max_seconds",
+        5.0,
+        minimum=0.01,
+    )
+    if capture_reconnect_max < capture_reconnect_initial:
+        raise ConfigError(
+            "capture_reconnect_max_seconds must be >= "
+            "capture_reconnect_initial_seconds"
         )
 
     return HarmonizeConfig(
@@ -275,6 +338,54 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
             post_stream_behavior=post_behavior,
         ),
         logging=LoggingConfig(level=log_level),
+        reliability=ReliabilityConfig(
+            startup_timeout_seconds=_number(
+                reliability_values,
+                "startup_timeout_seconds",
+                10.0,
+                minimum=0.1,
+            ),
+            shutdown_timeout_seconds=_number(
+                reliability_values,
+                "shutdown_timeout_seconds",
+                15.0,
+                minimum=0.1,
+            ),
+            capture_read_timeout_seconds=_number(
+                reliability_values,
+                "capture_read_timeout_seconds",
+                2.0,
+                minimum=0.1,
+            ),
+            capture_reconnect_initial_seconds=capture_reconnect_initial,
+            capture_reconnect_max_seconds=capture_reconnect_max,
+            transport_reconnect_attempts=_integer(
+                reliability_values,
+                "transport_reconnect_attempts",
+                3,
+                minimum=0,
+                maximum=100,
+            ),
+            transport_reconnect_initial_seconds=_number(
+                reliability_values,
+                "transport_reconnect_initial_seconds",
+                0.5,
+                minimum=0.01,
+            ),
+            hue_status_interval_seconds=_number(
+                reliability_values,
+                "hue_status_interval_seconds",
+                10.0,
+                minimum=0.5,
+            ),
+            health_interval_seconds=_number(
+                reliability_values,
+                "health_interval_seconds",
+                1.0,
+                minimum=0.1,
+            ),
+            health_file=health_file,
+        ),
         source_file=source,
     )
 

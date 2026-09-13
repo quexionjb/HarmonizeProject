@@ -26,3 +26,15 @@ post_stream_behavior = "restore"
 
 [logging]
 level = "INFO"
+
+[reliability]
+startup_timeout_seconds = 10.0
+shutdown_timeout_seconds = 15.0
+capture_read_timeout_seconds = 2.0
+capture_reconnect_initial_seconds = 0.5
+capture_reconnect_max_seconds = 5.0
+transport_reconnect_attempts = 3
+transport_reconnect_initial_seconds = 0.5
+hue_status_interval_seconds = 10.0
+health_interval_seconds = 1.0
+health_file = "run/harmonize-health.json"

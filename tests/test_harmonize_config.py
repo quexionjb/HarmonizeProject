@@ -25,6 +25,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.hue.entertainment_area, "TV area")
         self.assertEqual(config.capture.backend, "gstreamer")
         self.assertEqual(config.control.provider, "local")
+        self.assertEqual(config.reliability.shutdown_timeout_seconds, 15.0)
+        self.assertEqual(
+            config.reliability.health_file,
+            (example.parent / "run/harmonize-health.json").resolve(),
+        )
 
     def test_unattended_requires_area(self):
         path = self.write_config('[hue]\ncredentials_file = "client.json"\n')
@@ -83,6 +88,16 @@ class ConfigTests(unittest.TestCase):
             config.hue.credentials_file,
             (self.root / "secrets/client.json").resolve(),
         )
+
+    def test_reconnect_backoff_max_must_not_be_smaller_than_initial(self):
+        path = self.write_config(
+            '[hue]\nentertainment_area = "TV area"\n'
+            '[reliability]\n'
+            'capture_reconnect_initial_seconds = 2.0\n'
+            'capture_reconnect_max_seconds = 1.0\n'
+        )
+        with self.assertRaisesRegex(ConfigError, "must be >="):
+            load_config(path, unattended=True)
 
 
 class CredentialTests(unittest.TestCase):
