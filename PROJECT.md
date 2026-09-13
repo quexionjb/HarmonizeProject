@@ -104,16 +104,16 @@ Automatic control is only trustworthy if active and inactive source states can b
 
 ### Planned work
 
-- [ ] Record USB identity, driver, V4L2 capabilities, supported formats, resolutions, and frame rates for the capture device associated with /dev/video0.
+- [x] Record USB identity, driver, V4L2 capabilities, supported formats, resolutions, and frame rates for the capture device associated with /dev/video0.
 - [ ] Measure frame availability, read latency, timestamps, resolution, and device state while the HDMI source is actively playing.
 - [ ] Repeat measurements with the HDMI source powered off or in standby.
 - [ ] Repeat with the TV off while the HDMI source remains active.
 - [ ] Measure active-to-inactive and inactive-to-active transitions, including timing and transient errors.
 - [ ] Determine whether device state, frame delivery, timing, resolution changes, or frame contents provide the most reliable signal.
 - [ ] Analyze frame contents only if lower-level signals are insufficient.
-- [ ] Check installed HDMI-CEC devices, kernel support, and user-space tools without assuming CEC is required.
-- [ ] Build a repeatable, read-only capture diagnostic and record results.
-- [ ] Avoid Hue bridge contact or control unless a compelling need is explained and approved first.
+- [x] Check installed HDMI-CEC devices, kernel support, and user-space tools without assuming CEC is required.
+- [x] Build a repeatable, read-only capture diagnostic and record results.
+- [x] Avoid Hue bridge contact or control unless a compelling need is explained and approved first.
 
 ### Acceptance criteria
 
@@ -134,7 +134,7 @@ Automatic control is only trustworthy if active and inactive source states can b
 
 ### Status
 
-Not started. Requires explicit authorization after Milestone 0 review.
+In progress. Hardware inventory and the repeatable non-recording probe are complete; controlled physical-state and transition measurements remain.
 
 ## Milestone 2 — Establish Configuration and Dependency Boundaries
 
