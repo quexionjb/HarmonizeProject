@@ -401,26 +401,26 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 ### Planned work
 
 - [x] Identify every Hue resource affected by the selected entertainment configuration.
-- [x] Determine which state fields can be read and restored reliably through the Hue v2 API for the current static Hue Play resources; live verification remains pending.
+- [x] Determine which state fields can be read and restored reliably through the Hue v2 API for the current static Hue Play resources.
 - [x] Capture state immediately before taking control and associate it with the session.
-- [x] Implement configurable post-Ambilight modes restore and off; live verification remains pending.
-- [ ] Prefer restore as the default only after reliability is demonstrated.
+- [x] Implement configurable post-Ambilight modes restore and off.
+- [x] Prefer restore as the default only after reliability is demonstrated.
 - [x] Define behavior when lights change externally during streaming.
-- [x] Implement guarded offline handling for process crash, bridge loss, partial restore, and stale saved-state scenarios; live failure verification remains pending.
+- [x] Implement guarded handling for process crash, bridge loss, partial restore, and stale saved-state scenarios, including live startup-failure cleanup verification.
 - [x] Ensure saved state contains no credentials and has safe lifecycle/permissions.
-- [ ] Run approved live restore and off tests only against lights in the resolved TV area.
-- [ ] Record pre-test state and verify post-test state after normal stop and injected failure.
-- [x] Test against controlled fake light states and document the pending live recovery procedure.
+- [x] Run approved live restore and off tests only against lights in the resolved TV area.
+- [x] Record pre-test state and verify post-test state after normal stop and injected failure.
+- [x] Test against controlled fake light states and document the live recovery procedure.
 
 ### Acceptance criteria
 
-- [ ] Normal stop produces the configured post-Ambilight result for every affected light.
-- [ ] Restore accurately handles representative on/off, brightness, and color states supported by the selected lights.
-- [ ] Partial failures are logged and retried or surfaced without infinite loops.
-- [ ] Stale state cannot unexpectedly overwrite newer household changes.
-- [ ] Live Hue integration tests prove both restore and off behavior and leave no active Entertainment session.
-- [ ] A documented manual recovery procedure exists.
-- [ ] The pre-state-management behavior remains a rollback option.
+- [x] Normal stop produces the configured post-Ambilight result for every affected light.
+- [x] Restore accurately handles representative on/off, brightness, and color states supported by the selected lights.
+- [x] Partial failures are logged and retried or surfaced without infinite loops.
+- [x] Stale state cannot unexpectedly overwrite newer household changes.
+- [x] Live Hue integration tests prove both restore and off behavior and leave no active Entertainment session.
+- [x] A documented manual recovery procedure exists.
+- [x] The pre-state-management behavior remains a rollback option.
 
 ### Risks/unknowns
 
@@ -431,13 +431,15 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 
 ### Status
 
-In progress on branch m6-light-state at the pre-live checkpoint documented in
-docs/HANDOFF-MILESTONE-6.md. The offline implementation commit is d88e7b7 and
-all 87 tests pass. Read-only live discovery and journal preflight succeeded;
-the temporary preflight journal was explicitly discarded. No Milestone 6 Hue
-state change has occurred. Restore, injected-failure cleanup, off mode, physical
-appearance, and final original-state recovery still require the documented
-user-observed live validation. Milestone 6 is not accepted or complete.
+Complete on branch m6-light-state and awaiting review. The implementation
+checkpoint is d88e7b7 and all 87 offline tests pass. Controlled live validation
+against only TV area proved normal restore, cleanup after an injected
+after-DTLS-ready startup failure, and explicit off behavior. Hue API checks and
+the user's physical observations agreed at every checkpoint. The original
+pre-test light states were restored exactly, Entertainment finished inactive,
+and no recovery journal, socket, Harmonize process, or DTLS process remained.
+Detailed results and recovery instructions are recorded in
+docs/milestone-6-light-state.md. Milestone 7 has not begun.
 
 ## Milestone 7 — systemd Appliance Deployment
 
