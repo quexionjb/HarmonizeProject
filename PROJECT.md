@@ -329,12 +329,11 @@ An appliance service must survive routine errors and obey operating-system lifec
 
 ### Status
 
-Complete on branch m4-headless-reliability. Fifty-one offline tests, three live
-partial-startup failures, real SIGTERM and SIGINT shutdown, live DTLS and Hue
-session recovery, structured health/log validation, and a 301.846-second
-headless soak pass. Every active test finished with the exact "TV area"
-inactive and no lingering Harmonize or OpenSSL process. Stop for review before
-Milestone 5.
+Accepted and integrated into modernize at 13670ff. Fifty-one offline tests,
+three live partial-startup failures, real SIGTERM and SIGINT shutdown, live
+DTLS and Hue session recovery, structured health/log validation, and a
+301.846-second headless soak passed. Every active test finished with the exact
+"TV area" inactive and no lingering Harmonize or OpenSSL process.
 
 ## Milestone 5 — Automatic Ambilight State Machine
 
@@ -348,42 +347,48 @@ The lifecycle must behave consistently whether desired state comes from manual l
 
 ### Planned work
 
-- [ ] Implement IDLE → STARTING → STREAMING → STOPPING → IDLE with explicit error/recovery transitions.
-- [ ] Define a provider interface that emits enabled/disabled desired state with source and timestamp.
-- [ ] Implement a small local command or API surface for Ambilight ON, OFF, and STATUS.
-- [ ] Keep provider-specific logic outside capture, Hue, DTLS, cleanup, and light-state components.
-- [ ] Define precedence, authentication, stale-command expiry, and fail-safe behavior for multiple providers.
-- [ ] Make automatic providers optional; do not require HDMI-CEC or Homebridge.
-- [ ] Apply debounce and grace periods to automatic providers while keeping explicit commands deterministic.
-- [ ] Expose desired state, actual lifecycle state, transition progress, provider source, and errors.
-- [ ] Log every transition with reason and elapsed time.
-- [ ] Test state sequences with a fake clock, fake provider, and fake Hue controller.
-- [ ] Run approved live ON/OFF/STATUS cycles against the configured TV area and confirm each final state.
-- [ ] Validate repeated explicit ON/OFF cycles before enabling any automatic provider.
-- [ ] Defer Homebridge/HomeKit integration until separately authorized.
+- [x] Implement IDLE → STARTING → STREAMING → STOPPING → IDLE with explicit error/recovery transitions.
+- [x] Define a provider interface that emits enabled/disabled desired state with source and timestamp.
+- [x] Implement a small local command or API surface for Ambilight ON, OFF, and STATUS.
+- [x] Keep provider-specific logic outside capture, Hue, DTLS, cleanup, and light-state components.
+- [x] Define precedence, authentication, stale-command expiry, and fail-safe behavior for multiple providers.
+- [x] Make automatic providers optional; do not require HDMI-CEC or Homebridge.
+- [x] Apply debounce and grace periods to automatic providers while keeping explicit commands deterministic.
+- [x] Expose desired state, actual lifecycle state, transition progress, provider source, and errors.
+- [x] Log every transition with reason and elapsed time.
+- [x] Test state sequences with a fake clock, fake provider, and fake Hue controller.
+- [x] Run approved live ON/OFF/STATUS cycles against the configured TV area and confirm each final state.
+- [x] Validate repeated explicit ON/OFF cycles before enabling any automatic provider.
+- [x] Defer Homebridge/HomeKit integration until separately authorized.
 
 ### Acceptance criteria
 
-- [ ] An ON command starts one Hue Entertainment session and reaches STREAMING.
-- [ ] An OFF command reaches IDLE after complete cleanup and configured light-state handling.
-- [ ] STATUS distinguishes desired state, actual state, transition state, and errors.
-- [ ] The same lifecycle tests pass with interchangeable fake providers.
-- [ ] Provider loss or stale state follows a documented fail-safe policy.
-- [ ] The Harmonize controller remains alive in IDLE.
-- [ ] Failures transition predictably and never skip required cleanup.
-- [ ] Live lifecycle tests affect only the configured TV area and leave its Entertainment session stopped.
-- [ ] Homebridge is not a runtime dependency of the core daemon.
+- [x] An ON command starts one Hue Entertainment session and reaches STREAMING.
+- [x] An OFF command reaches IDLE after complete cleanup. Normal light-state restore/off behavior remains explicitly deferred to Milestone 6.
+- [x] STATUS distinguishes desired state, actual state, transition state, and errors.
+- [x] The same lifecycle tests pass with interchangeable fake providers.
+- [x] Provider loss or stale state follows a documented fail-safe policy.
+- [x] The Harmonize controller remains alive in IDLE.
+- [x] Failures transition predictably and never skip required cleanup.
+- [x] Live lifecycle tests affect only the configured TV area and leave its Entertainment session stopped.
+- [x] Homebridge is not a runtime dependency of the core daemon.
 
 ### Risks/unknowns
 
-- A network API needs access control and should default to a Unix socket or loopback-only binding.
-- Multiple providers can conflict or leave stale desired state.
-- Automatic state sources may flap and need provider-specific policy.
-- Hue sessions started elsewhere may conflict with ownership assumptions.
+- The local API uses a mode-0600 Unix socket and no network listener; its authentication boundary is operating-system filesystem access by the service user.
+- Explicit local state has priority 100 and persists for the daemon lifetime. Future automatic sources must use lower priorities and refresh before their configured stale timeout.
+- Automatic provider flapping is contained by configurable ON debounce and OFF grace; no automatic provider is enabled yet.
+- Hue sessions started elsewhere may still conflict with ownership assumptions; lifecycle operations remain scoped to the exact configured area.
 
 ### Status
 
-Not started.
+Complete on branch m5-state-machine. Sixty-nine offline tests and a real
+read-only IDLE/OFF check pass. Three approved live ON/STATUS/OFF cycles each
+created one fresh controller, reached STREAMING, cleaned up to IDLE, and kept
+the daemon responsive between cycles. Final read-only Hue status was inactive.
+The Unix-socket API, arbitration and fail-safe policy, validation evidence, and
+rollback point are documented. Homebridge/HomeKit and all automatic providers
+remain deferred. Stop for review before Milestone 6.
 
 ## Milestone 6 — Hue Light State Management
 

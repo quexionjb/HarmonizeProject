@@ -162,26 +162,37 @@ Validate configuration and credentials offline:
       --mode unattended \
       --check-credentials
 
-Start the headless foreground runtime:
+Start the headless foreground daemon. It remains alive in IDLE until enabled:
 
     /home/pi/harmonize_env/bin/python harmonize.py \
       --config harmonize.toml
 
-The process runs without terminal input. SIGTERM and SIGINT perform bounded
-capture, DTLS, and Hue cleanup. The example configuration writes an atomic
-non-secret health snapshot to run/harmonize-health.json. A systemd service unit
-is planned for a later milestone.
+Control it from another shell:
+
+    /home/pi/harmonize_env/bin/python tools/harmonize_control.py \
+      ON --config harmonize.toml
+    /home/pi/harmonize_env/bin/python tools/harmonize_control.py \
+      STATUS --config harmonize.toml
+    /home/pi/harmonize_env/bin/python tools/harmonize_control.py \
+      OFF --config harmonize.toml
+
+ON and OFF wait for STREAMING and IDLE respectively. The owner-only local Unix
+socket has no network listener. SIGTERM and SIGINT perform bounded capture,
+DTLS, Hue, provider, and socket cleanup. The example configuration writes an
+atomic non-secret health snapshot to run/harmonize-health.json. A systemd
+service unit is planned for a later milestone.
 
 **Command line arguments:**
 
 * --config selects the TOML configuration.
 * --check-area performs read-only exact-area validation and exits.
-* --run-seconds bounds a diagnostic or soak run and then uses normal cleanup.
+* --run-seconds bounds a diagnostic daemon run and then uses normal cleanup.
 * --health-file overrides the configured health snapshot path.
 * -v, -g, -b, -i, -s, -w, -f, -l, and -a remain accepted for compatibility.
 
-See docs/milestone-4-headless-reliability.md for recovery policy, health fields,
-failure diagnostics, validation evidence, and rollback.
+See docs/milestone-4-headless-reliability.md for resource recovery details and
+docs/milestone-5-state-machine.md for commands, provider policy, state, live
+validation evidence, and rollback.
 
 # Troubleshooting
 
