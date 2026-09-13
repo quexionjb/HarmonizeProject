@@ -72,8 +72,9 @@ On 2026-09-13:
   IPv4 and three IPv6 addresses. Discovery now treats those addresses as one
   bridge and selects its IPv4 address.
 - A live read-only query resolved exactly one area named "TV area" with two
-  channels. A reserved unknown name failed with an actionable message using
-  the same response. No Entertainment action was sent.
+  channels and reported Entertainment status inactive. A reserved unknown name
+  failed with an actionable message using the same response. No Entertainment
+  action was sent.
 - The refactored application passed --unattended --check-area without a prompt
   and resolved "TV area" as legacy group 200.
 - The combined preflight captured one 720x480 frame, analyzed both configured

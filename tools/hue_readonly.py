@@ -56,6 +56,7 @@ def main() -> int:
     print("Read-only Hue validation succeeded.")
     print(f'Configured area: "{area.name}"')
     print(f"Channel count: {len(area.channels)}")
+    print(f'Entertainment status: {area.status or "<not reported>"}')
     print(f"Unknown-name behavior: {unknown_result}")
     print("No Entertainment action request was sent.")
     return 0

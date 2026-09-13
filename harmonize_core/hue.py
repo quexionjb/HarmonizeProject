@@ -31,6 +31,7 @@ class EntertainmentArea:
     legacy_group_id: str
     name: str
     channels: tuple[Channel, ...]
+    status: str | None = None
 
 
 def _legacy_group_id(resource: dict[str, Any]) -> str:
@@ -59,6 +60,11 @@ def area_from_resource(resource: dict[str, Any]) -> EntertainmentArea:
             legacy_group_id=_legacy_group_id(resource),
             name=str(resource["name"]),
             channels=channels,
+            status=(
+                str(resource["status"])
+                if resource.get("status") is not None
+                else None
+            ),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise HarmonizeError("Hue returned a malformed Entertainment area") from exc

@@ -13,6 +13,7 @@ def resource(name="TV area", resource_id="12345678-1234-1234-1234-123456789abc")
         "id": resource_id,
         "id_v1": "/groups/7",
         "name": name,
+        "status": "inactive",
         "channels": [
             {
                 "channel_id": 0,
@@ -28,6 +29,7 @@ class HueResolutionTests(unittest.TestCase):
         self.assertEqual(area.name, "TV area")
         self.assertEqual(area.legacy_group_id, "7")
         self.assertEqual(area.channels[0].channel_id, 0)
+        self.assertEqual(area.status, "inactive")
 
     def test_name_matching_is_case_sensitive(self):
         with self.assertRaisesRegex(HarmonizeError, '"tv area" was not found'):
