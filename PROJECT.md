@@ -85,7 +85,7 @@ Hue validation proceeds in controlled stages:
 - Milestone 4 exercises live partial-startup cleanup, DTLS/bridge recovery, signals, and bounded shutdown under an approved failure-injection procedure.
 - Milestone 5 validates explicit ON/OFF/STATUS lifecycle cycles against the configured area after provider and state-machine tests pass offline.
 - Milestone 6 performs controlled live light-state capture and restore/off tests with a recorded manual recovery procedure.
-- Milestone 9 repeats end-to-end Hue validation, including missing-area, temporary network failure, service restart, cleanup, and post-Ambilight light state.
+- Milestone 10 repeats end-to-end Hue validation, including missing-area, temporary network failure, service restart, cleanup, and post-Ambilight light state.
 
 Every live-Hue test requires a stated scope, expected light behavior, cleanup path, and rollback point. Record the selected Entertainment area and pre/post state without logging credentials. Confirm streaming is stopped after each test, including failed tests. Do not contact or control the bridge merely to validate parsing or other behavior that can be tested offline.
 
@@ -495,7 +495,52 @@ acceptance. A complete reboot exercise remains in final validation. Docker,
 AirPrint, and host CUPS were explicitly out of scope and were not inspected.
 Detailed evidence is in `docs/milestone-7-systemd.md`.
 
-## Milestone 8 — Ambilight Quality Improvements
+## Milestone 8 — Homebridge Control Adapter
+
+### Objective
+
+Provide the smallest reliable interface needed for a Homebridge dummy switch to control Harmonize through its existing desired-state boundary.
+
+### Why it matters
+
+Homebridge already exports the owner's dummy switch to HomeKit. A narrow local adapter can connect that switch to Harmonize without coupling the core service to Homebridge or HomeKit and without exposing a network API.
+
+### Planned work
+
+- [ ] Confirm the Homebridge service identity and the dummy switch's supported local command hooks without changing its HomeKit configuration.
+- [ ] Add a small local adapter, preferably a `harmonizectl` command, that maps explicit ON, OFF, and optionally STATUS operations to the existing owner-only Unix socket.
+- [ ] Keep the Unix-socket desired-state provider as the sole Harmonize control boundary; do not add Homebridge- or HomeKit-specific logic to Harmonize.
+- [ ] Define stable command exit codes, bounded timeouts, actionable errors, and a simple machine-readable status result if Homebridge can usefully consume it.
+- [ ] Grant the Homebridge runtime only the minimum permission needed to invoke the fixed control adapter, without granting Hue credential, general shell, service-management, or broader Harmonize account access.
+- [ ] Preserve explicit-stop semantics: dummy-switch OFF must reach Harmonize OFF and leave every light in `TV area` powered off.
+- [ ] Add offline tests for command mapping, status, permission assumptions, unavailable service/socket behavior, invalid input, and timeout/failure reporting.
+- [ ] Document Homebridge dummy-switch ON/OFF command setup, optional status integration, diagnostics, permission removal, and full rollback.
+- [ ] Perform controlled live validation by toggling the existing Homebridge dummy switch ON and OFF and observing actual Ambilight and light-off behavior.
+- [ ] Keep HomeKit integration itself, Docker, AirPrint, and host CUPS outside this milestone; do not routinely inspect them.
+
+### Acceptance criteria
+
+- [ ] Dummy-switch ON causes Harmonize to reach STREAMING and the configured `TV area` lights visibly follow captured video.
+- [ ] Dummy-switch OFF causes Harmonize to reach IDLE and every configured-area light remains powered off.
+- [ ] Homebridge can obtain accurate Harmonize status through the adapter if status feedback is supported and useful for the chosen dummy-switch mechanism.
+- [ ] Harmonize remains provider-neutral and exposes no new network listener or HomeKit-specific code.
+- [ ] Homebridge receives no permission beyond invoking the narrow fixed control interface.
+- [ ] Adapter failures and an unavailable Harmonize service are bounded, visible, and do not leave a stuck Entertainment session.
+- [ ] Setup and rollback can be completed from the documentation, including removal of any Homebridge permission grant.
+- [ ] Offline and live results are recorded, Entertainment finishes inactive, and only `TV area` is affected.
+
+### Risks/unknowns
+
+- The installed Homebridge dummy-switch plugin may differ in how it invokes local commands or reports state; inspect its supported hooks before choosing adapter output semantics.
+- A direct Unix-socket group grant may expose more filesystem access than a tightly constrained adapter, while a sudo rule must be root-owned and argument-safe.
+- Homebridge and Harmonize can disagree after either service restarts unless status is queried or the switch behavior is explicitly documented as command-only.
+- Command retries must not turn transient errors into repeated or stale desired-state changes.
+
+### Status
+
+Not started. Do not implement until Milestone 8 is explicitly authorized.
+
+## Milestone 9 — Ambilight Quality Improvements
 
 ### Objective
 
@@ -536,7 +581,7 @@ Quality work should be measurable and reversible, and must not destabilize lifec
 
 Not started.
 
-## Milestone 9 — Final Validation and Documentation
+## Milestone 10 — Final Validation and Documentation
 
 ### Objective
 
