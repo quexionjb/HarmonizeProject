@@ -105,7 +105,7 @@ Automatic control is only trustworthy if active and inactive source states can b
 ### Planned work
 
 - [x] Record USB identity, driver, V4L2 capabilities, supported formats, resolutions, and frame rates for the capture device associated with /dev/video0.
-- [ ] Measure frame availability, read latency, timestamps, resolution, and device state while the HDMI source is actively playing.
+- [x] Measure frame availability, read latency, timestamps, resolution, and device state while the HDMI source is actively playing.
 - [ ] Repeat measurements with the HDMI source powered off or in standby.
 - [ ] Repeat with the TV off while the HDMI source remains active.
 - [ ] Measure active-to-inactive and inactive-to-active transitions, including timing and transient errors.

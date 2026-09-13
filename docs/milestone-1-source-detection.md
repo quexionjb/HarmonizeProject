@@ -53,11 +53,24 @@ At 2026-09-13T18:59:14Z, the current physical HDMI/TV state had not yet been con
 
 This sample proves continuous frame delivery in the current state. It does not yet prove that frame delivery distinguishes useful HDMI video from standby behavior.
 
+## Controlled active-source observation
+
+At 2026-09-13T19:02:03Z, the TV was on and the HDMI source was confirmed actively playing:
+
+- Open succeeded through GStreamer.
+- Reported format was 720x480 at 60 FPS.
+- 828 frames succeeded and zero reads failed in 15.011 seconds.
+- Effective rate was 55.161 FPS.
+- First frame arrived in 1.478 ms.
+- Median interarrival time was 18.124 ms; 95th percentile was 18.217 ms; maximum was 31.041 ms.
+- No resolution or shape change occurred.
+- Content metrics were not collected.
+
 ## Test matrix
 
 | Condition | Frame delivery | Timing and format | Content metrics | Result |
 | --- | --- | --- | --- | --- |
-| HDMI source actively playing | Pending | Pending | Only if needed | Pending |
+| HDMI source actively playing | 828/828 frames; no failures | 720x480; 55.161 FPS; 18.124 ms median interval | Not needed yet | Continuous stable delivery |
 | HDMI source off or in standby | Pending | Pending | Only if needed | Pending |
 | TV off, HDMI source active | Pending | Pending | Only if needed | Pending |
 | Active to inactive transition | Pending | Pending | Only if needed | Pending |
