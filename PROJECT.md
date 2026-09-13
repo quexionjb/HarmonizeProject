@@ -49,6 +49,31 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 
 Each milestone begins from a known commit and ends at a separately reviewable commit. Before installing files outside the repository, capture the current file, package, service, permissions, and workload state needed to reverse the operation. Repository rollback should normally mean checking out the previous accepted commit or reverting the milestone commit. System rollback must restore prior service units and configuration, reload systemd when needed, verify airprint and other Docker workloads against their recorded baselines, and leave host-level CUPS untouched. Avoid irreversible migrations; credential and configuration changes require a documented recovery path.
 
+## Target Controller Architecture
+
+The future daemon separates desired state from lifecycle execution:
+
+    Desired-state providers
+      - local command/API
+      - Homebridge/HomeKit adapter (future)
+      - HDMI-CEC provider (future, unavailable in current wiring)
+      - other automation providers
+                |
+                v
+      normalized desired state
+      enabled/disabled + source + timestamp
+                |
+                v
+      Harmonize lifecycle controller
+      IDLE -> STARTING -> STREAMING -> STOPPING -> IDLE
+                |
+                v
+      capture, Hue session, DTLS, and light-state components
+
+The lifecycle controller must not contain provider-specific logic. It accepts a desired state and exposes actual state, transition progress, and errors. The initial production control surface should support Ambilight ON, Ambilight OFF, and Ambilight STATUS through a small local API or command interface. Homebridge may later map that interface to an Ambilight switch without becoming a required Harmonize dependency.
+
+Automatic providers must be optional and replaceable. Manual control must remain available when no reliable automatic TV-state signal exists. Provider arbitration, authentication, stale-command handling, and fail-safe behavior will be specified before implementation.
+
 # Milestones
 
 ## Milestone 0 — Repository and Safety Baseline
@@ -96,45 +121,46 @@ Complete. The baseline commits are on origin/modernize.
 
 ### Objective
 
-Measure how the installed USB capture path behaves and select the simplest reliable signal meaning there is video worth running Ambilight for.
+Determine whether the installed capture and HDMI topology exposes a reliable TV-power signal, evaluate direct HDMI-CEC, and define a safe explicit-control fallback when automatic detection is unavailable.
 
 ### Why it matters
 
-Automatic control is only trustworthy if active and inactive source states can be distinguished without flapping, false starts, or assumptions about HDMI behavior.
+The Roku can keep valid HDMI video flowing to the capture branch while the television is off. Appliance control must use actual desired state rather than infer TV power from brittle content assumptions.
 
 ### Planned work
 
-- [x] Record USB identity, driver, V4L2 capabilities, supported formats, resolutions, and frame rates for the capture device associated with /dev/video0.
-- [x] Measure frame availability, read latency, timestamps, resolution, and device state while the HDMI source is actively playing.
-- [x] Repeat measurements with the HDMI source powered off or in standby.
-- [ ] Repeat with the TV off while the HDMI source remains active.
-- [ ] Measure active-to-inactive and inactive-to-active transitions, including timing and transient errors.
-- [ ] Determine whether device state, frame delivery, timing, resolution changes, or frame contents provide the most reliable signal.
-- [x] Analyze frame contents only if lower-level signals are insufficient.
-- [x] Check installed HDMI-CEC devices, kernel support, and user-space tools without assuming CEC is required.
-- [x] Build a repeatable, read-only capture diagnostic and record results.
-- [x] Avoid Hue bridge contact or control unless a compelling need is explained and approved first.
+- [x] Record USB identity, driver, V4L2 capabilities, supported formats, resolutions, and frame rates for /dev/video0.
+- [x] Measure frame availability, read latency, timestamps, resolution, and device state with active Roku video.
+- [x] Measure the capture device with the HDMI source off or in standby.
+- [x] Document the independent Roku → splitter → TV/capture topology and TV-off behavior.
+- [x] Stop content comparison once capture activity was proven independent of TV power.
+- [x] Exclude Roku Home, screensaver, black-frame, image-hash, and other content-specific heuristics.
+- [x] Inventory Pi HDMI connectors, CEC nodes, kernel support, physical addresses, and USB capture interfaces.
+- [x] Determine whether the existing wiring exposes the television's CEC bus to the Pi.
+- [x] Build a repeatable, non-recording capture diagnostic and record results.
+- [x] Define explicit ON/OFF/STATUS control and a modular desired-state provider boundary as the production fallback.
+- [x] Avoid Hue bridge contact and control throughout the milestone.
 
 ### Acceptance criteria
 
-- [ ] All four required HDMI/TV conditions have repeatable observations.
-- [ ] Transition timing and false-positive/false-negative behavior are documented.
-- [ ] The chosen detection signal has a stated sampling interval, debounce proposal, and failure semantics.
-- [ ] CEC is classified as available/unavailable and useful/unnecessary.
-- [ ] No Hue state was changed.
-- [ ] The accepted results and rollback commit are recorded before Milestone 2.
+- [x] Active-source and source-standby capture behavior are repeatably characterized.
+- [x] The TV-off/Roku-active topology limitation is documented without content-specific workarounds.
+- [x] Capture activity is classified as unreliable for TV-power detection in this topology.
+- [x] Direct HDMI-CEC is classified as unavailable with the current physical wiring.
+- [x] The recommended explicit-control design is independent of capture and future trigger source.
+- [x] No Hue state, host CUPS service, airprint container, or other Docker workload was changed.
+- [x] Findings and the rollback commit are recorded before Milestone 2.
 
 ### Risks/unknowns
 
-- The capture adapter may continue emitting frozen, black, blue, or test-pattern frames without HDMI input.
-- TV power may not affect the splitter/capture path when the source remains active.
-- /dev/video numbering may change after reboot or reconnect.
-- OpenCV, GStreamer, and direct V4L2 reads may report failures differently.
-- CEC may not pass through the splitter or USB capture adapter.
+- A future Pi HDMI or dedicated CEC connection to the television would create a different topology requiring new validation.
+- Homebridge may or may not already expose a reliable Roku/TV state suitable for later automation.
+- The local control transport and provider arbitration rules remain Milestone 2 design decisions.
+- /dev/video numbering stability still matters for capture operation even though capture no longer supplies TV power state.
 
 ### Status
 
-In progress. Hardware inventory and the repeatable non-recording probe are complete; controlled physical-state and transition measurements remain.
+Complete. Direct CEC and capture-based TV-power detection are unavailable in the current topology. Explicit modular desired-state control is recommended. Stop for review before Milestone 2.
 
 ## Milestone 2 — Establish Configuration and Dependency Boundaries
 
@@ -262,36 +288,43 @@ Not started.
 
 ### Objective
 
-Keep the controller running continuously while starting and stopping Hue Entertainment according to measured source activity.
+Keep the controller running continuously while starting and stopping Hue Entertainment according to a normalized desired state supplied by a modular trigger provider.
 
 ### Why it matters
 
-Explicit states and transitions make unattended decisions observable, testable, and resistant to brief HDMI interruptions.
+The lifecycle must behave consistently whether desired state comes from manual local control, future Homebridge automation, future CEC hardware, or another provider.
 
 ### Planned work
 
-- [ ] Implement IDLE → SOURCE_DETECTED → STARTING → STREAMING → STOPPING → IDLE.
-- [ ] Define permitted error/recovery transitions without bypassing cleanup.
-- [ ] Feed the state machine with the signal selected in Milestone 1.
-- [ ] Configure activation debounce, shutdown grace, minimum-on time, and recovery backoff.
-- [ ] Keep capture/detection active as required while Hue streaming is stopped.
+- [ ] Implement IDLE → STARTING → STREAMING → STOPPING → IDLE with explicit error/recovery transitions.
+- [ ] Define a provider interface that emits enabled/disabled desired state with source and timestamp.
+- [ ] Implement a small local command or API surface for Ambilight ON, OFF, and STATUS.
+- [ ] Keep provider-specific logic outside capture, Hue, DTLS, cleanup, and light-state components.
+- [ ] Define precedence, authentication, stale-command expiry, and fail-safe behavior for multiple providers.
+- [ ] Make automatic providers optional; do not require HDMI-CEC or Homebridge.
+- [ ] Apply debounce and grace periods to automatic providers while keeping explicit commands deterministic.
+- [ ] Expose desired state, actual lifecycle state, transition progress, provider source, and errors.
 - [ ] Log every transition with reason and elapsed time.
-- [ ] Test state sequences with a fake clock, fake detector, and fake Hue controller.
-- [ ] Validate real transition behavior through repeated source cycles.
+- [ ] Test state sequences with a fake clock, fake provider, and fake Hue controller.
+- [ ] Validate repeated explicit ON/OFF cycles before enabling any automatic provider.
+- [ ] Defer Homebridge/HomeKit integration until separately authorized.
 
 ### Acceptance criteria
 
-- [ ] Stable active video starts one Hue Entertainment session.
-- [ ] Stable inactive video stops it after the configured grace period.
-- [ ] Brief interruptions do not cause unnecessary stop/start cycles.
+- [ ] An ON command starts one Hue Entertainment session and reaches STREAMING.
+- [ ] An OFF command reaches IDLE after complete cleanup and configured light-state handling.
+- [ ] STATUS distinguishes desired state, actual state, transition state, and errors.
+- [ ] The same lifecycle tests pass with interchangeable fake providers.
+- [ ] Provider loss or stale state follows a documented fail-safe policy.
 - [ ] The Harmonize controller remains alive in IDLE.
 - [ ] Failures transition predictably and never skip required cleanup.
-- [ ] Real and simulated transition results are documented.
+- [ ] Homebridge is not a runtime dependency of the core daemon.
 
 ### Risks/unknowns
 
-- Source flapping thresholds may depend on the capture adapter and content.
-- Capture must remain cheap enough in IDLE to coexist with other Pi workloads.
+- A network API needs access control and should default to a Unix socket or loopback-only binding.
+- Multiple providers can conflict or leave stale desired state.
+- Automatic state sources may flap and need provider-specific policy.
 - Hue sessions started elsewhere may conflict with ownership assumptions.
 
 ### Status

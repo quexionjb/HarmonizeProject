@@ -95,39 +95,78 @@ Because lower-level signals were insufficient, a second 15-second run collected 
 
 The WARRKY adapter therefore continues normal frame delivery in standby but appears to emit a static fallback image. Device-open state, read success, frame timing, and resolution cannot distinguish active playback from standby on their own.
 
-## Test matrix
+## Topology finding
 
-| Condition | Frame delivery | Timing and format | Content metrics | Result |
-| --- | --- | --- | --- | --- |
-| HDMI source actively playing | 828/828 frames; no failures | 720x480; 55.161 FPS; 18.124 ms median interval | 37.2430% near-identical; median temporal difference 0.718 | Continuous changing video |
-| HDMI source off or in standby | 829/829 frames; no failures | 720x480; 55.169 FPS; 18.117 ms median interval | 99.6377% near-identical; median temporal difference 0.0 | Continuous static fallback |
-| TV off, HDMI source active | Pending | Pending | Only if needed | Pending |
-| Active to inactive transition | Pending | Pending | Only if needed | Pending |
-| Inactive to active transition | Pending | Pending | Only if needed | Pending |
+The production HDMI path is:
 
-Use the same source, splitter, capture connection, probe duration, backend, and negotiated settings for comparisons. Record exact physical actions and allow the system to settle before steady-state samples.
+    Roku Ultra
+      -> HDMI splitter
+           -> television
+           -> WARRKY USB capture device -> Raspberry Pi
 
-## HDMI-CEC inventory
+The splitter outputs are independent. Turning off the television does not stop the Roku output presented to the capture branch. Normal use returns the Roku to its Home screen before TV shutdown, and the Roku can later display its animated aquarium screensaver while the TV remains off.
 
-- /dev/cec0 maps to the Pi controller at 107c701400.hdmi.
-- /dev/cec1 maps to the Pi controller at 107c706400.hdmi.
+Consequences:
+
+- Valid, changing capture frames can continue indefinitely while the television is off.
+- Video/frame-content activity is not, by itself, a reliable proxy for TV power state in this topology.
+- Roku Home, screensaver, black-frame, image-hash, logo, or other content-specific recognition is intentionally excluded as brittle.
+- Further content comparison and capture-transition experiments cannot answer the TV-power question and were stopped.
+
+## Diagnostic matrix
+
+| Condition | Observation | TV-power value |
+| --- | --- | --- |
+| HDMI source actively playing | 828/828 frames; stable 720x480 at 55.161 FPS; moving content | None by itself |
+| HDMI source off or in standby | 829/829 frames; same format/timing; static fallback | Can identify this source state, but not TV state |
+| TV off, Roku remains active | Roku continues valid HDMI through the independent capture branch and can animate its screensaver | Capture remains active despite TV off |
+| Capture transitions | Can describe Roku/capture changes only | Not pursued as a TV-power detector |
+
+The standby measurement remains useful for understanding the adapter, but it must not drive the production TV-power decision.
+
+## HDMI-CEC diagnostic
+
+Ubuntu has kernel CEC support:
+
+- /dev/cec0 maps to vc4-hdmi-0 and DRM connector card1-HDMI-A-1.
+- /dev/cec1 maps to vc4-hdmi-1 and DRM connector card1-HDMI-A-2.
 - The vc4 and cec kernel modules are loaded.
-- cec-ctl and cec-client are not installed.
-- These adapters belong to the Pi's HDMI outputs, while the video source enters through the USB capture device. Their presence alone does not show that source or TV power state is visible through the splitter topology.
-- CEC remains an optional secondary signal. Frame/device behavior will be evaluated first.
+- Both Pi HDMI connectors report disconnected and disabled with zero-byte EDID.
+- A temporary, uninstalled cec-ctl 1.26.1 query reported physical address f.f.f.f, logical-address mask 0x0000, and zero logical addresses on both adapters.
+- The WARRKY USB device exposes UVC video, USB audio, and HID interfaces. It exposes no CEC adapter.
+- The CEC nodes are attached to the Pi's disconnected HDMI outputs, not to the USB capture input.
 
-## Current hypotheses
+The existing splitter topology provides no CEC path to the Pi. Whether the splitter passes CEC between its HDMI source and television ports does not help because the Pi is connected only through USB capture, and that device does not transport CEC. Direct television power queries over HDMI-CEC are therefore unavailable with the existing wiring and Ubuntu device topology.
 
-1. Frame delivery cannot distinguish active playback from source standby because both states deliver continuously.
-2. Steady-state format and timing cannot distinguish those states on this adapter.
-3. Aggregate temporal change is a promising signal because the standby output settles into a fixed fallback frame.
-4. CEC should be excluded if the Pi output adapters cannot observe the upstream TV/source topology reliably.
+A future physical connection from a Pi HDMI port or dedicated supported CEC adapter into the television's CEC bus could change this conclusion and would require a new topology-specific validation. No such hardware change is required for the initial design.
 
-## Open questions
+## Milestone decision
 
-- Which physical condition produced the initial unclassified sample?
-- Does the WARRKY device continue to deliver frames with no HDMI input?
-- Does the splitter preserve an HDMI signal when only the TV powers off?
-- Does the capture format change during transitions?
-- Is a specific /dev/video node or stable by-id mapping sufficient after reboot?
-- Can CEC observe anything useful in this wiring without changing the HDMI topology?
+1. Automatic capture-based TV-power detection is not viable with the current topology.
+2. Direct HDMI-CEC television power detection is not available with the current wiring.
+3. Content-specific heuristics must not be used to infer TV power.
+4. The first production trigger should be an explicit desired-state command independent of capture activity.
+5. The Ambilight lifecycle must accept desired state through a modular provider boundary.
+
+The future control surface should support:
+
+- Ambilight ON
+- Ambilight OFF
+- Ambilight STATUS
+
+A small local API, Unix socket, or command interface can provide this control. Homebridge/HomeKit can later expose it as an Ambilight switch, and later automation may supply a reliable TV/Roku state. HomeKit integration is outside Milestone 1 and is not implemented here.
+
+The controller should normalize every trigger into desired enabled/disabled state plus source and timestamp. Its lifecycle state machine should respond to that normalized state without knowing whether it came from CEC, Homebridge, a local command/API, or another automation source.
+
+## Recommendation
+
+Proceed with explicit manual enable/disable control as the initial production design. Keep the capture stream responsible for Ambilight color data only after enablement. Preserve a provider interface so reliable automation can be added later without changing Hue session, capture, cleanup, or light-restoration logic.
+
+CEC should remain an optional future provider that is disabled in the present topology. Milestone 2 should define the configuration and dependency boundary for providers and the local control surface, but must not implement HomeKit integration without separate authorization.
+
+## Remaining unknowns
+
+- Which local control transport best balances simplicity, systemd operation, and Homebridge access.
+- Whether Homebridge already has a reliable Roku/TV state source suitable for later automation.
+- Whether future hardware changes will place a Pi-supported CEC adapter on the television's CEC bus.
+- How competing or stale desired-state commands should be prioritized and expired.
