@@ -239,32 +239,32 @@ Separate the monolithic script into testable components while preserving the cur
 Clear ownership of resources is required to fix races, recover safely, and add automation without changing visual behavior accidentally.
 
 ### Planned work
-- [ ] Add Hue area resolution that maps the exact configured name TV area to one Entertainment configuration before any start request.
-- [ ] Keep legacy/manual interactive selection available when practical, but prohibit it in unattended mode.
+- [x] Add Hue area resolution that maps the exact configured name TV area to one Entertainment configuration before any start request.
+- [x] Keep legacy/manual interactive selection available when practical, but prohibit area prompts in unattended mode.
 
-- [ ] Establish components for capture, Hue bridge/API control, frame/color analysis, HueStream packet construction, DTLS transport, and controller lifecycle.
-- [ ] Replace shared mutable globals with explicit state and ownership.
-- [ ] Replace fixed startup sleeps with readiness/error signaling.
-- [ ] Synchronize frame and color data consistently.
-- [ ] Make capture reset safe relative to active reads and preserve file/URL inputs.
-- [ ] Use binary-safe HueStream transport and add packet-level tests.
-- [ ] Make cleanup safe after failures at every partial startup stage.
-- [ ] Run a separately approved read-only live test confirming TV area exists and test an unknown configured name for a clear pre-stream error.
+- [x] Establish components for capture, Hue bridge/API control, frame/color analysis, HueStream packet construction, DTLS transport, and controller lifecycle.
+- [x] Replace shared mutable globals with explicit state and ownership.
+- [x] Replace fixed startup sleeps with readiness/error signaling.
+- [x] Synchronize frame and color data consistently.
+- [x] Make capture reset safe relative to active reads and preserve file/URL inputs.
+- [x] Use binary-safe HueStream transport and add packet-level tests.
+- [x] Make cleanup safe after failures at every partial startup stage covered offline.
+- [x] Run a separately approved read-only live test confirming TV area exists and test an unknown configured name for a clear pre-stream error.
 - [ ] Run a separately approved manual start/stream/stop test scoped to TV area and verify cleanup afterward.
-- [ ] Create characterization tests for light-position mapping, RGB encoding, brightness behavior, and packet layout.
+- [x] Create characterization tests for light-position mapping, RGB encoding, brightness behavior, and packet layout.
 - [ ] Run the refactored application manually against the same capture and Hue setup only under an approved test procedure.
 
 ### Acceptance criteria
 
-- [ ] Each named component has a narrow interface and clear resource ownership.
-- [ ] Existing CLI behavior and Ambilight sampling are preserved or differences are documented and approved.
-- [ ] Packet construction is binary-safe and covered by deterministic tests.
-- [ ] Thread startup, shutdown, and capture reset no longer depend on arbitrary sleeps.
-- [ ] Unattended execution resolves TV area deterministically with no prompt.
-- [ ] Missing or ambiguous configured areas fail before streaming with an actionable message naming the configured value.
+- [x] Each named component has a narrow interface and clear resource ownership.
+- [ ] Existing CLI behavior and Ambilight sampling are preserved or differences are documented and approved. Sampling is characterized; documented CLI differences await milestone review.
+- [x] Packet construction is binary-safe and covered by deterministic tests.
+- [x] Thread startup and capture reset no longer depend on arbitrary sleeps; bounded shutdown work remains Milestone 4.
+- [x] Unattended area-check execution resolves TV area deterministically with no prompt.
+- [x] Missing or ambiguous configured areas fail before streaming with an actionable message naming the configured value.
 - [ ] The approved live Hue test confirms streaming starts and stops only for the resolved TV area.
 - [ ] Manual end-to-end operation succeeds before automation begins.
-- [ ] The pre-refactor commit remains a tested rollback point.
+- [x] The pre-refactor commit ee4bbc0 remains a tested rollback point.
 
 ### Risks/unknowns
 
@@ -275,7 +275,12 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 
 ### Status
 
-Not started.
+In progress on branch m3-refactor. The component refactor, 40 offline tests,
+read-only exact/unknown Hue validation, unattended area check, and combined
+capture/analysis/unsent-packet preflight are complete. The live bridge contains
+one exact "TV area" with two channels. No Entertainment start action or DTLS
+packet has been sent. Work is stopped at the required approval boundary before
+the first active-light test. Do not begin Milestone 4.
 
 ## Milestone 4 — Headless Lifecycle and Reliability
 
