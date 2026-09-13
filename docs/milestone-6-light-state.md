@@ -10,7 +10,9 @@ area. It was developed on `m6-light-state` from accepted Milestone 5 commit
 - Exact Entertainment-area light membership resolution.
 - Static on/off, brightness, XY color, and valid color-temperature capture
   immediately before Hue Entertainment starts.
-- Verified `restore` and `off` post-stream modes with bounded per-light retries.
+- Explicit OFF and daemon/service stop always apply off after a confirmed
+  Entertainment stop; exceptional cleanup uses the configured restore/off
+  policy with bounded per-light retries.
 - Refusal to capture active dynamic scenes, timed effects, effects, or
   unsupported modes that cannot be replayed safely.
 - Atomic mode-`0600`, non-secret session journals guarded by session, area, and
@@ -23,7 +25,9 @@ area. It was developed on `m6-light-state` from accepted Milestone 5 commit
 - Cleanup failures remain visible in supervisor `ERROR` until acknowledged by
   a new OFF command.
 
-Restore is the default after the controlled live validation below. Accepted
+The configuration key ambilight.exception_cleanup_behavior defaults to
+restore and never changes explicit-stop behavior. The former
+post_stream_behavior key is rejected to avoid ambiguous semantics. Accepted
 Milestone 5 commit `66d5495` remains the rollback point for behavior without
 light-state management.
 
@@ -68,6 +72,38 @@ The known test backup was inspected and explicitly allowed despite exceeding
 the stale window. The user confirmed the original physical appearance. Final
 checks found Entertainment inactive and no journal, socket, Harmonize process,
 or OpenSSL DTLS process.
+
+## Required explicit-stop correction
+
+After the initial validation, Milestone 6 was reopened because normal user OFF
+had restored pre-session state. The corrected contract is:
+
+- local OFF and daemon/service stop turn every light in the configured area off;
+- startup/runtime failure applies ambilight.exception_cleanup_behavior,
+  defaulting to restore;
+- uncertain Entertainment stop applies neither policy and retains the journal.
+
+The prior normal-restore observation above is historical evidence for the
+restore mechanism, not the corrected explicit-OFF behavior.
+
+Focused live correction validation on 2026-09-13 saved the original state in a
+separate mode-0600 recovery journal, then set both TV area lights to visible
+static states. ON reached STREAMING and the user confirmed both followed video.
+Explicit OFF reached IDLE, left Entertainment inactive, removed the session
+journal, and Hue GET reported both light resources powered off. The user
+confirmed both remained completely dark until they were independently changed
+for the next test.
+
+Both lights were then independently set to visible states (right brightness
+45.06 and left brightness 54.94). A zero-retry after_dtls_ready startup failure
+latched ERROR; exceptional cleanup restored both visible states, removed the
+journal, and left Entertainment inactive. The user physically confirmed the
+restoration with no lingering Ambilight behavior.
+
+Finally, the guarded recovery path restored the original both-off correction
+baseline. The user confirmed the original appearance. Final checks found
+Entertainment inactive and no journal, socket, Harmonize process, or OpenSSL
+DTLS process. The corrected suite passes 89 offline tests.
 
 ## Manual recovery
 

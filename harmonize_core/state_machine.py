@@ -379,7 +379,10 @@ class AmbilightSupervisor:
             and self.clock() - self._controller_started_at
             > self.startup_timeout_seconds
         ):
-            controller.request_stop("startup timeout")
+            controller.request_stop(
+                "startup timeout",
+                light_state_behavior="restore",
+            )
             controller.join(self.shutdown_timeout_seconds)
             self._controller_failed(
                 "Ambilight controller did not reach STREAMING within "

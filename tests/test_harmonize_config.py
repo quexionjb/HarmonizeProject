@@ -31,6 +31,9 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.control.recovery_attempts, 3)
         self.assertEqual(
+            config.ambilight.exception_cleanup_behavior, "restore"
+        )
+        self.assertEqual(
             config.light_state.journal_file,
             (example.parent / "run/harmonize-light-state.json").resolve(),
         )
@@ -78,6 +81,14 @@ class ConfigTests(unittest.TestCase):
             '[ambilight]\nsample_breadth = 2.0\n'
         )
         with self.assertRaisesRegex(ConfigError, "sample_breadth"):
+            load_config(path, unattended=True)
+
+    def test_obsolete_post_stream_behavior_is_rejected(self):
+        path = self.write_config(
+            '[hue]\nentertainment_area = "TV area"\n'
+            '[ambilight]\npost_stream_behavior = "restore"\n'
+        )
+        with self.assertRaisesRegex(ConfigError, "post_stream_behavior"):
             load_config(path, unattended=True)
 
     def test_nonfinite_timing_is_rejected(self):

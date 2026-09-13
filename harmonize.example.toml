@@ -29,7 +29,9 @@ auto_restart_seconds = 0.0
 single_light = false
 sample_breadth = 0.15
 update_interval_seconds = 0.05
-post_stream_behavior = "restore"
+# Explicit OFF and daemon/service stop always turn every area light off.
+# This setting applies only to startup/runtime failure cleanup.
+exception_cleanup_behavior = "restore"
 
 [logging]
 level = "INFO"

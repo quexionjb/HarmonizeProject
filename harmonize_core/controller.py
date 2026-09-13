@@ -86,6 +86,7 @@ class HarmonizeController:
         self.ready = threading.Event()
         self.finished = threading.Event()
         self._stop_requested = threading.Event()
+        self._stop_light_behavior: str | None = None
         self._thread: threading.Thread | None = None
         self._health_lock = threading.Lock()
         self._last_packet_monotonic: float | None = None
@@ -113,7 +114,14 @@ class HarmonizeController:
         )
         self._thread.start()
 
-    def request_stop(self, reason: str = "requested") -> None:
+    def request_stop(
+        self,
+        reason: str = "requested",
+        *,
+        light_state_behavior: str = "off",
+    ) -> None:
+        if light_state_behavior not in {"restore", "off"}:
+            raise ValueError("light_state_behavior must be restore or off")
         if not self._stop_requested.is_set():
             log_event(
                 self._logger,
@@ -121,7 +129,9 @@ class HarmonizeController:
                 "shutdown_requested",
                 reason=reason,
                 state=self.state.value,
+                light_state_behavior=light_state_behavior,
             )
+            self._stop_light_behavior = light_state_behavior
             self._stop_requested.set()
 
     def join(self, timeout: float | None = None) -> bool:
@@ -381,7 +391,10 @@ class HarmonizeController:
                     and light_snapshot is not None
                 ):
                     try:
-                        light_state_manager.finish(light_snapshot)
+                        light_state_manager.finish(
+                            light_snapshot,
+                            behavior=self._stop_light_behavior,
+                        )
                     except Exception as cleanup_error:
                         remember_cleanup_error(cleanup_error)
             if self.state is not LifecycleState.ERROR:

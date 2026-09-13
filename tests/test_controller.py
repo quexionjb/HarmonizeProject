@@ -96,8 +96,8 @@ class FakeLightStateManager:
         self.captured += 1
         return self.snapshot
 
-    def finish(self, snapshot):
-        self.finished.append(snapshot)
+    def finish(self, snapshot, *, behavior=None):
+        self.finished.append((snapshot, behavior or "restore"))
         if self.fail_finish:
             raise HarmonizeError("injected restore failure")
 
@@ -284,7 +284,7 @@ class ControllerTests(unittest.TestCase):
         )
         self.assertTrue(FakeTransport.instances[0].closed)
 
-    def test_light_state_is_captured_and_restored_around_stream(self):
+    def test_explicit_stop_turns_off_captured_area_lights(self):
         hue = FakeHue()
         capture = FakeCapture()
         manager = FakeLightStateManager()
@@ -295,8 +295,20 @@ class ControllerTests(unittest.TestCase):
         subject.request_stop()
         subject.join(1.0)
         self.assertEqual(manager.captured, 1)
-        self.assertEqual(manager.finished, [manager.snapshot])
+        self.assertEqual(manager.finished, [(manager.snapshot, "off")])
         self.assertEqual(hue.actions, [("start", "TV area"), ("stop", "TV area")])
+
+    def test_exceptional_startup_failure_restores_captured_state(self):
+        hue = FakeHue()
+        capture = FakeCapture()
+        manager = FakeLightStateManager()
+        subject = controller(hue, capture)
+        subject.failure_injection = "after_dtls_ready"
+        subject.light_state_factory = lambda area: manager
+        subject.run()
+        self.assertEqual(subject.state, LifecycleState.ERROR)
+        self.assertEqual(manager.captured, 1)
+        self.assertEqual(manager.finished, [(manager.snapshot, "restore")])
 
     def test_uncertain_hue_stop_preserves_state_journal_without_apply(self):
         hue = FakeHue()

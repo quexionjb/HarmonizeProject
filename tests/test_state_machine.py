@@ -62,8 +62,8 @@ class FakeHueController:
             self.state = LifecycleState.STREAMING
             self.ready.set()
 
-    def request_stop(self, reason):
-        self.events.append(("stop", reason))
+    def request_stop(self, reason, *, light_state_behavior="off"):
+        self.events.append(("stop", reason, light_state_behavior))
         self.state = LifecycleState.IDLE
         self.finished.set()
 
@@ -216,6 +216,10 @@ class SupervisorTests(unittest.TestCase):
                 provider.emit(False)
                 subject._reconcile()
                 self.assertEqual(subject.state, SupervisorState.IDLE)
+                self.assertIn(
+                    ("stop", f"{source} requested OFF", "off"),
+                    controller.events,
+                )
 
     def test_cleanup_error_remains_visible_until_new_off_command(self):
         clock = FakeClock()
@@ -300,8 +304,17 @@ class SupervisorTests(unittest.TestCase):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.001)
         self.assertTrue(subject.snapshot()["alive"])
+        provider.emit(True)
+        deadline = time.monotonic() + 1
+        while subject.state is not SupervisorState.STREAMING:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.001)
         subject.request_stop("test complete")
         self.assertTrue(subject.join(1))
+        self.assertIn(
+            ("stop", "daemon shutdown", "off"),
+            controllers[-1].events,
+        )
         self.assertTrue(provider.closed)
 
     def test_starting_timeout_enters_error_after_cleanup(self):
@@ -321,6 +334,7 @@ class SupervisorTests(unittest.TestCase):
         subject._reconcile()
         self.assertEqual(subject.state, SupervisorState.ERROR)
         self.assertIn("did not reach STREAMING", subject.error)
+        self.assertIn(("stop", "startup timeout", "restore"), controller.events)
         self.assertTrue(controller.finished.is_set())
 
 

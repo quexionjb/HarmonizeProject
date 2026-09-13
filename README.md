@@ -176,9 +176,13 @@ Control it from another shell:
     /home/pi/harmonize_env/bin/python tools/harmonize_control.py \
       OFF --config harmonize.toml
 
-ON and OFF wait for STREAMING and IDLE respectively. The owner-only local Unix
-socket has no network listener. SIGTERM and SIGINT perform bounded capture,
-DTLS, Hue, provider, and socket cleanup. The example configuration writes an
+ON and OFF wait for STREAMING and IDLE respectively. Explicit OFF and
+daemon/service stop turn every light in the configured Entertainment area off.
+The ambilight.exception_cleanup_behavior setting applies only to exceptional
+startup/runtime cleanup and defaults to restoring captured pre-session state.
+The owner-only local Unix socket has no network listener. SIGTERM and SIGINT
+perform bounded capture, DTLS, Hue, provider, and socket cleanup. The example
+configuration writes an
 atomic non-secret health snapshot to run/harmonize-health.json. A systemd
 service unit is planned for a later milestone.
 

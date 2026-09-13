@@ -388,10 +388,15 @@ class HueLightStateManager:
             behavior=selected,
         )
 
-    def finish(self, snapshot: LightStateSnapshot) -> None:
+    def finish(
+        self,
+        snapshot: LightStateSnapshot,
+        *,
+        behavior: str | None = None,
+    ) -> None:
         current = self.journal.load()
         if current.session_id != snapshot.session_id:
             raise HarmonizeError(
                 "Light-state journal session changed; refusing automatic apply"
             )
-        self.apply(snapshot)
+        self.apply(snapshot, behavior=behavior)

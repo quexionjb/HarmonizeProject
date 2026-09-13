@@ -52,7 +52,7 @@ class AmbilightConfig:
     single_light: bool = False
     sample_breadth: float = 0.15
     update_interval_seconds: float = 0.05
-    post_stream_behavior: str = "restore"
+    exception_cleanup_behavior: str = "restore"
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,7 @@ _KEYS = {
         "single_light",
         "sample_breadth",
         "update_interval_seconds",
-        "post_stream_behavior",
+        "exception_cleanup_behavior",
     },
     "logging": {"level"},
     "light_state": {
@@ -291,12 +291,12 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
         socket_path = source.parent / socket_path
     socket_path = socket_path.resolve()
 
-    post_behavior = _string(
-        ambilight_values, "post_stream_behavior", default="restore"
+    exception_behavior = _string(
+        ambilight_values, "exception_cleanup_behavior", default="restore"
     )
-    if post_behavior not in {"restore", "off"}:
+    if exception_behavior not in {"restore", "off"}:
         raise ConfigError(
-            "ambilight.post_stream_behavior must be one of: restore, off"
+            "ambilight.exception_cleanup_behavior must be one of: restore, off"
         )
 
     log_level = _string(logging_values, "level", default="INFO")
@@ -419,7 +419,7 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
             update_interval_seconds=_number(
                 ambilight_values, "update_interval_seconds", 0.05, minimum=0.001
             ),
-            post_stream_behavior=post_behavior,
+            exception_cleanup_behavior=exception_behavior,
         ),
         logging=LoggingConfig(level=log_level),
         light_state=LightStateConfig(

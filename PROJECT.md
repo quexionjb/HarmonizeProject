@@ -392,7 +392,7 @@ inactive. Homebridge/HomeKit and all automatic providers remain deferred.
 
 ### Objective
 
-Capture enough pre-stream Hue state to restore lights reliably, with configurable restore or off behavior after Ambilight.
+Capture pre-stream Hue state for safe exceptional cleanup while ensuring explicit user OFF leaves every configured-area light powered off.
 
 ### Why it matters
 
@@ -403,8 +403,8 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 - [x] Identify every Hue resource affected by the selected entertainment configuration.
 - [x] Determine which state fields can be read and restored reliably through the Hue v2 API for the current static Hue Play resources.
 - [x] Capture state immediately before taking control and associate it with the session.
-- [x] Implement configurable post-Ambilight modes restore and off.
-- [x] Prefer restore as the default only after reliability is demonstrated.
+- [x] Make explicit OFF and daemon/service stop turn every configured-area light off; retain configurable restore/off only for exceptional cleanup.
+- [x] Use restore as the default exceptional-cleanup policy after reliability is demonstrated.
 - [x] Define behavior when lights change externally during streaming.
 - [x] Implement guarded handling for process crash, bridge loss, partial restore, and stale saved-state scenarios, including live startup-failure cleanup verification.
 - [x] Ensure saved state contains no credentials and has safe lifecycle/permissions.
@@ -414,7 +414,7 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 
 ### Acceptance criteria
 
-- [x] Normal stop produces the configured post-Ambilight result for every affected light.
+- [x] Explicit OFF and daemon/service stop leave every affected light powered off.
 - [x] Restore accurately handles representative on/off, brightness, and color states supported by the selected lights.
 - [x] Partial failures are logged and retried or surfaced without infinite loops.
 - [x] Stale state cannot unexpectedly overwrite newer household changes.
@@ -431,15 +431,16 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 
 ### Status
 
-Complete on branch m6-light-state and awaiting review. The implementation
-checkpoint is d88e7b7 and all 87 offline tests pass. Controlled live validation
-against only TV area proved normal restore, cleanup after an injected
-after-DTLS-ready startup failure, and explicit off behavior. Hue API checks and
-the user's physical observations agreed at every checkpoint. The original
-pre-test light states were restored exactly, Entertainment finished inactive,
-and no recovery journal, socket, Harmonize process, or DTLS process remained.
-Detailed results and recovery instructions are recorded in
-docs/milestone-6-light-state.md. Milestone 7 has not begun.
+Complete on branch m6-light-state and awaiting review after the required
+explicit-stop correction. Explicit OFF and daemon/service stop now have a fixed
+off disposition, while ambilight.exception_cleanup_behavior controls only
+exceptional cleanup and defaults to restore. All 89 offline tests pass. Focused
+live validation proved that explicit OFF left both TV area lights dark until an
+independent change, while an injected after-DTLS-ready startup failure restored
+the visible pre-failure states. The original test baseline was restored and
+Entertainment finished inactive with no journal, socket, Harmonize process, or
+DTLS process. Detailed evidence is in docs/milestone-6-light-state.md.
+Milestone 7 has not begun.
 
 ## Milestone 7 — systemd Appliance Deployment
 

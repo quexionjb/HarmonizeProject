@@ -45,7 +45,7 @@ class RuntimeOptions:
     sample_breadth: float
     update_interval_seconds: float
     logging_level: str
-    post_stream_behavior: str
+    exception_cleanup_behavior: str
     control: ControlConfig
     light_state: LightStateConfig
     reliability: ReliabilityConfig
@@ -140,7 +140,7 @@ def _runtime_options(
             sample_breadth=0.15,
             update_interval_seconds=0.0167,
             logging_level="DEBUG" if args.verbose else "INFO",
-            post_stream_behavior="restore",
+            exception_cleanup_behavior="restore",
             control=ControlConfig(
                 socket_path=Path("run/harmonize.sock").resolve()
             ),
@@ -179,7 +179,7 @@ def _runtime_options(
         sample_breadth=config.ambilight.sample_breadth,
         update_interval_seconds=config.ambilight.update_interval_seconds,
         logging_level="DEBUG" if args.verbose else config.logging.level,
-        post_stream_behavior=config.ambilight.post_stream_behavior,
+        exception_cleanup_behavior=config.ambilight.exception_cleanup_behavior,
         control=config.control,
         light_state=config.light_state,
         reliability=reliability,
@@ -285,7 +285,7 @@ def run(argv: list[str] | None = None) -> int:
             return HueLightStateManager(
                 hue=hue,
                 area=resolved_area,
-                behavior=options.post_stream_behavior,
+                behavior=options.exception_cleanup_behavior,
                 journal=LightStateJournal(options.light_state.journal_file),
                 stale_after_seconds=options.light_state.stale_after_seconds,
                 restore_attempts=options.light_state.restore_attempts,
