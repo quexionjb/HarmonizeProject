@@ -2,7 +2,7 @@
 
 ## Objective
 
-Turn Harmonize into an appliance-like Ambilight service on this Raspberry Pi 5 running Ubuntu. The service should run unattended, detect whether the HDMI/video source is worth illuminating, start and stop Hue Entertainment streaming automatically, and restore the affected lights or turn them off afterward. It must coexist safely with the production airprint Docker print service and the Pi's other Docker workloads; host-level CUPS is intentionally inactive and out of scope.
+Turn Harmonize into an appliance-like Ambilight service on this Raspberry Pi 5 running Ubuntu. The service should run unattended, detect whether the HDMI/video source is worth illuminating, start and stop Hue Entertainment streaming automatically, and restore the affected lights or turn them off afterward. Docker, the production airprint container, other Docker workloads, and host-level CUPS are outside the Harmonize project scope and must not be intentionally modified or disrupted.
 
 This roadmap is the persistent tracker for that work. Implementation stops at every milestone boundary for review and explicit authorization.
 
@@ -26,7 +26,8 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 - Preserve a known-working state at every milestone.
 - Make small, reviewable commits.
 - Do not mix unrelated milestones in one change.
-- Do not disrupt CUPS or Docker: preserve the airprint container and other Docker workloads, and leave host-level CUPS untouched.
+- Docker, the airprint container, and other Docker workloads are out of scope. Do not intentionally modify, restart, reconfigure, or disrupt them, and leave host-level CUPS untouched.
+- Routine Docker and airprint health checks are not required at every milestone. Perform targeted read-only checks only when the work could reasonably affect Docker, printing, networking, system services, or shared appliance resources.
 - Do not expose Hue credentials or other secrets.
 - Prefer measurement and testing over assumptions about the hardware.
 - Preserve working Harmonize behavior before trying to improve its visual output.
@@ -47,7 +48,7 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 
 ## Rollback Philosophy
 
-Each milestone begins from a known commit and ends at a separately reviewable commit. Before installing files outside the repository, capture the current file, package, service, permissions, and workload state needed to reverse the operation. Repository rollback should normally mean checking out the previous accepted commit or reverting the milestone commit. System rollback must restore prior service units and configuration, reload systemd when needed, verify airprint and other Docker workloads against their recorded baselines, and leave host-level CUPS untouched. Avoid irreversible migrations; credential and configuration changes require a documented recovery path.
+Each milestone begins from a known commit and ends at a separately reviewable commit. Before installing files outside the repository, capture the current file, package, service, permissions, and workload state needed to reverse the operation. Repository rollback should normally mean checking out the previous accepted commit or reverting the milestone commit. System rollback must restore prior service units and configuration and reload systemd when needed. If the work could reasonably affect Docker or printing, rollback validation must also compare airprint and other Docker workloads with their recorded baselines. Host-level CUPS must remain untouched. Avoid irreversible migrations; credential and configuration changes require a documented recovery path.
 
 ## Target Controller Architecture
 
@@ -124,7 +125,8 @@ Credentials and unrelated appliance workloads must be protected before experimen
 
 - Upstream history previously contained client.json files, so historical credentials may have existed even though the current credential is distinct.
 - GitHub connector access and local Git command authentication are separate; local GitHub CLI authentication is now configured and modernize tracks origin/modernize.
-- User pi cannot access the Docker socket directly, so airprint health and other workload details require an authorized read-only validation method.
+- User pi cannot access the Docker socket directly. This does not create a recurring milestone check requirement; when relevant work could reasonably affect Docker or printing, use an authorized read-only validation method.
+- Docker and the airprint container are protected external workloads, not Harmonize deliverables. Their configuration, operation, and maintenance remain outside this roadmap.
 - Host CUPS is intentionally inactive and disabled; changing that state would conflict with the production airprint architecture.
 
 ### Status
