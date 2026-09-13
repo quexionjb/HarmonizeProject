@@ -12,7 +12,7 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 - Operating system: Ubuntu with Linux 6.8.0-1064-raspi observed during initial discovery.
 - Python: 3.12.3 in both the system interpreter and /home/pi/harmonize_env.
 - Computer vision: OpenCV 4.10.0 with GStreamer 1.24.2, FFmpeg, and V4L2 support; NumPy 1.26.4.
-- Capture: /dev/video0 and /dev/video1 exist, along with Pi codec devices. User pi belongs to the video group. Capture behavior under HDMI state changes is not yet characterized.
+- Capture: /dev/video0 and /dev/video1 exist, along with Pi codec devices. User pi belongs to the video group. Milestone 1 found capture activity independent of TV power in the current splitter topology.
 - Harmonize: upstream v2.4.2 at commit 51b4f52; no Harmonize process or systemd service was running during discovery.
 - Hue: client.json exists only as a local ignored file in the current checkout. The current file is not tracked and its content hash does not match historical client.json blobs. Older upstream history did track files at that path before removing it, so history must never be treated as a safe place for credentials.
 - Docker: docker.service was active and enabled at the Milestone 0 baseline. The existing airprint container is the production print service and printing is working normally. User pi cannot read the Docker API socket, so container health and other workloads require an authorized read-only validation method.
@@ -188,41 +188,45 @@ The current manually assembled environment and script-level options are difficul
 
 ### Planned work
 
-- [ ] Inventory imports and system dependencies, including OpenCV/GStreamer and the OpenSSL DTLS requirement.
-- [ ] Choose and document a reproducible Python dependency specification compatible with aarch64 Ubuntu and Python 3.12.
-- [ ] Define ordinary non-secret configuration for capture selection, detection/provider settings, timings, logging, post-stream behavior, and hue.entertainment_area = "TV area"; the area value must come from configuration and never be a hard-coded application constant.
-- [ ] Require unattended mode to resolve one configured default Entertainment area deterministically, without input() or any other prompt.
-- [ ] Preserve legacy/manual interactive area selection when practical, while treating it as an explicit compatibility mode rather than a service fallback.
-- [ ] Keep credentials in a separate protected file with restrictive permissions.
-- [ ] Preserve direct use of the existing client.json or provide an explicit, reversible migration tool.
-- [ ] Add validation with useful errors and no secret values in logs.
-- [ ] Document setup without requiring Docker.
-- [ ] Verify that installation steps leave host CUPS untouched and do not alter airprint or other Docker packages, services, networks, containers, or permissions.
+- [x] Inventory imports and system dependencies, including OpenCV/GStreamer and the OpenSSL DTLS requirement.
+- [x] Choose and document a reproducible Python dependency specification compatible with aarch64 Ubuntu and Python 3.12.
+- [x] Define ordinary non-secret configuration for capture selection, detection/provider settings, timings, logging, post-stream behavior, and hue.entertainment_area = "TV area"; the area value comes from configuration and is not a hard-coded application constant.
+- [x] Require unattended mode to resolve one configured default Entertainment area deterministically, without input() or any other prompt.
+- [x] Preserve legacy/manual interactive area selection when practical, while treating it as an explicit compatibility mode rather than a service fallback.
+- [x] Keep credentials in a separate protected file with restrictive permissions.
+- [x] Preserve direct use of the existing client.json with a reversible permission-hardening path.
+- [x] Add validation with useful errors and no secret values in logs.
+- [x] Document setup without requiring Docker.
+- [x] Verify that installation steps leave host CUPS untouched and do not alter airprint or other Docker packages, services, networks, containers, or permissions.
 
 ### Acceptance criteria
 
-- [ ] The documented non-secret example includes hue.entertainment_area = "TV area" with exact capitalization.
-- [ ] Unattended configuration validation requires a non-empty default area and never prompts.
-- [ ] Offline tests cover missing configuration and legacy/manual fallback without contacting the bridge.
-- [ ] Live area existence and uniqueness validation is explicitly deferred to the approved Milestone 3 bridge test.
-- [ ] A fresh environment can be created from version-controlled instructions and dependency metadata.
-- [ ] Non-secret configuration has a documented example.
-- [ ] Secret storage is ignored, permission-checked, and compatible with current credentials.
-- [ ] Startup fails clearly on invalid configuration without contacting unintended bridges.
-- [ ] Existing manual Harmonize operation remains available.
-- [ ] Rollback restores the prior environment/configuration path.
+- [x] The documented non-secret example includes hue.entertainment_area = "TV area" with exact capitalization.
+- [x] Unattended configuration validation requires a non-empty default area and never prompts.
+- [x] Offline tests cover missing configuration and legacy/manual fallback without contacting the bridge.
+- [x] Live area existence and uniqueness validation is explicitly deferred to the approved Milestone 3 bridge test.
+- [x] A fresh environment can be created from version-controlled instructions and dependency metadata.
+- [x] Non-secret configuration has a documented example.
+- [x] Secret storage is ignored, permission-checked, and compatible with current credentials.
+- [x] Startup fails clearly on invalid configuration without contacting unintended bridges.
+- [x] Existing manual Harmonize operation remains available unchanged.
+- [x] Rollback restores the prior environment/configuration path.
 
 ### Risks/unknowns
 
-- OpenCV may remain partly system-built rather than fully reproducible through Python packaging.
+- OpenCV 4.10.0 is a documented system boundary because the accepted local build supplies required GStreamer support; a generic wheel is not an equivalent replacement.
 - Entertainment-area names can be renamed or duplicated on the bridge; live resolution must reject zero or multiple exact matches.
 - A future stable Hue resource ID may be stored as an optional resolved value, but the configured human-readable default remains ordinary configuration.
-- Hue client key formats and file permissions must remain compatible with upstream behavior.
+- The existing compatible client.json is mode 0664. Manual validation warns and continues; unattended validation requires the owner to apply the documented chmod 600 correction. Milestone 2 did not alter the file.
 - GStreamer plugin availability may vary across Ubuntu updates.
 
 ### Status
 
-Not started.
+Complete on branch m2-config-boundaries. Offline typed configuration, credential
+validation, reproducible Python dependency metadata, tests, and setup/rollback
+instructions are present. The legacy runtime and credentials remain unchanged.
+Live Hue area existence/uniqueness validation is deferred to Milestone 3 as
+planned. Stop for review before Milestone 3.
 
 ## Milestone 3 — Refactor Harmonize Without Changing Behavior
 

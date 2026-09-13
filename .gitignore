@@ -16,6 +16,7 @@ ENV/
 .env
 .env.*
 !.env.example
+harmonize.toml
 *.local.json
 *.local.toml
 *.local.yaml

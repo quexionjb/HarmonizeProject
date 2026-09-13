@@ -1,0 +1,28 @@
+# Ordinary, non-secret Harmonize configuration.
+# Copy this file to harmonize.toml. Never put Hue credentials in this file.
+
+[hue]
+entertainment_area = "TV area"
+credentials_file = "client.json"
+# bridge_ip = "192.0.2.10"
+
+[capture]
+device_index = 0
+backend = "gstreamer"
+# stream_source = "file-or-url"
+
+[control]
+# Milestone 2 supports validation of the local provider boundary only.
+provider = "local"
+
+[ambilight]
+video_wait_seconds = 2.0
+brightness_adjustment = 0
+auto_restart_seconds = 0.0
+single_light = false
+sample_breadth = 0.15
+update_interval_seconds = 0.05
+post_stream_behavior = "restore"
+
+[logging]
+level = "INFO"

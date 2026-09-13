@@ -1,0 +1,326 @@
+"""Offline configuration and credential validation for Harmonize.
+
+This module deliberately performs no network discovery and never contacts Hue.
+Milestone 3 will integrate it with the application runtime.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import math
+from pathlib import Path
+import stat
+import tomllib
+from typing import Any
+
+
+class ConfigError(ValueError):
+    """A configuration error safe to display without exposing credentials."""
+
+
+@dataclass(frozen=True)
+class HueConfig:
+    entertainment_area: str | None
+    credentials_file: Path
+    bridge_ip: str | None = None
+
+
+@dataclass(frozen=True)
+class CaptureConfig:
+    device_index: int = 0
+    backend: str = "gstreamer"
+    stream_source: str | None = None
+
+
+@dataclass(frozen=True)
+class ControlConfig:
+    provider: str = "local"
+
+
+@dataclass(frozen=True)
+class AmbilightConfig:
+    video_wait_seconds: float = 2.0
+    brightness_adjustment: int = 0
+    auto_restart_seconds: float = 0.0
+    single_light: bool = False
+    sample_breadth: float = 0.15
+    update_interval_seconds: float = 0.05
+    post_stream_behavior: str = "restore"
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    level: str = "INFO"
+
+
+@dataclass(frozen=True)
+class HarmonizeConfig:
+    hue: HueConfig
+    capture: CaptureConfig
+    control: ControlConfig
+    ambilight: AmbilightConfig
+    logging: LoggingConfig
+    source_file: Path
+
+
+@dataclass(frozen=True)
+class HueCredentials:
+    username: str
+    clientkey: str
+    warnings: tuple[str, ...] = ()
+
+
+_SECTIONS = {"hue", "capture", "control", "ambilight", "logging"}
+_KEYS = {
+    "hue": {"entertainment_area", "credentials_file", "bridge_ip"},
+    "capture": {"device_index", "backend", "stream_source"},
+    "control": {"provider"},
+    "ambilight": {
+        "video_wait_seconds",
+        "brightness_adjustment",
+        "auto_restart_seconds",
+        "single_light",
+        "sample_breadth",
+        "update_interval_seconds",
+        "post_stream_behavior",
+    },
+    "logging": {"level"},
+}
+
+
+def _table(document: dict[str, Any], name: str) -> dict[str, Any]:
+    value = document.get(name, {})
+    if not isinstance(value, dict):
+        raise ConfigError(f"[{name}] must be a TOML table")
+    return value
+
+
+def _reject_unknown(document: dict[str, Any]) -> None:
+    unknown_sections = sorted(set(document) - _SECTIONS)
+    if unknown_sections:
+        raise ConfigError(
+            "Unknown configuration section(s): " + ", ".join(unknown_sections)
+        )
+    for section in _SECTIONS:
+        values = _table(document, section)
+        unknown_keys = sorted(set(values) - _KEYS[section])
+        if unknown_keys:
+            names = ", ".join(f"{section}.{key}" for key in unknown_keys)
+            raise ConfigError(f"Unknown configuration setting(s): {names}")
+
+
+def _string(
+    table: dict[str, Any],
+    key: str,
+    *,
+    default: str | None = None,
+    optional: bool = False,
+) -> str | None:
+    value = table.get(key, default)
+    if value is None and optional:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ConfigError(f"{key} must be a non-empty string")
+    if value != value.strip():
+        raise ConfigError(f"{key} must not begin or end with whitespace")
+    return value
+
+
+def _number(
+    table: dict[str, Any],
+    key: str,
+    default: float,
+    *,
+    minimum: float,
+    maximum: float | None = None,
+) -> float:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{key} must be a number")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ConfigError(f"{key} must be finite")
+    if result < minimum or (maximum is not None and result > maximum):
+        limit = (
+            f" between {minimum} and {maximum}"
+            if maximum is not None
+            else f" >= {minimum}"
+        )
+        raise ConfigError(f"{key} must be{limit}")
+    return result
+
+
+def _integer(
+    table: dict[str, Any], key: str, default: int, *, minimum: int, maximum: int
+) -> int:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{key} must be an integer")
+    if not minimum <= value <= maximum:
+        raise ConfigError(f"{key} must be between {minimum} and {maximum}")
+    return value
+
+
+def _boolean(table: dict[str, Any], key: str, default: bool) -> bool:
+    value = table.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{key} must be true or false")
+    return value
+
+
+def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
+    """Load and validate TOML without performing network or device access."""
+
+    source = Path(path).expanduser().resolve()
+    try:
+        with source.open("rb") as handle:
+            document = tomllib.load(handle)
+    except FileNotFoundError as exc:
+        raise ConfigError(
+            f"Configuration file not found: {source}. "
+            "Copy harmonize.example.toml to harmonize.toml and edit it."
+        ) from exc
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigError(f"Cannot read configuration file {source}: {exc}") from exc
+
+    _reject_unknown(document)
+    hue_values = _table(document, "hue")
+    capture_values = _table(document, "capture")
+    control_values = _table(document, "control")
+    ambilight_values = _table(document, "ambilight")
+    logging_values = _table(document, "logging")
+
+    area = _string(hue_values, "entertainment_area", optional=True)
+    if unattended and area is None:
+        raise ConfigError(
+            "hue.entertainment_area is required in unattended mode; "
+            'set it to the exact Hue Entertainment area name, for example "TV area"'
+        )
+
+    credentials_name = _string(
+        hue_values, "credentials_file", default="client.json"
+    )
+    assert credentials_name is not None
+    credentials_path = Path(credentials_name).expanduser()
+    if not credentials_path.is_absolute():
+        credentials_path = source.parent / credentials_path
+
+    backend = _string(capture_values, "backend", default="gstreamer")
+    if backend not in {"gstreamer", "v4l2", "any"}:
+        raise ConfigError("capture.backend must be one of: gstreamer, v4l2, any")
+
+    provider = _string(control_values, "provider", default="local")
+    if provider != "local":
+        raise ConfigError(
+            "control.provider must be local in Milestone 2; additional providers "
+            "will be added in later milestones"
+        )
+
+    post_behavior = _string(
+        ambilight_values, "post_stream_behavior", default="restore"
+    )
+    if post_behavior not in {"restore", "off"}:
+        raise ConfigError(
+            "ambilight.post_stream_behavior must be one of: restore, off"
+        )
+
+    log_level = _string(logging_values, "level", default="INFO")
+    assert log_level is not None
+    log_level = log_level.upper()
+    if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+        raise ConfigError(
+            "logging.level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+        )
+
+    return HarmonizeConfig(
+        hue=HueConfig(
+            entertainment_area=area,
+            credentials_file=credentials_path.resolve(),
+            bridge_ip=_string(hue_values, "bridge_ip", optional=True),
+        ),
+        capture=CaptureConfig(
+            device_index=_integer(
+                capture_values, "device_index", 0, minimum=0, maximum=255
+            ),
+            backend=backend,
+            stream_source=_string(capture_values, "stream_source", optional=True),
+        ),
+        control=ControlConfig(provider=provider),
+        ambilight=AmbilightConfig(
+            video_wait_seconds=_number(
+                ambilight_values, "video_wait_seconds", 2.0, minimum=0.0
+            ),
+            brightness_adjustment=_integer(
+                ambilight_values,
+                "brightness_adjustment",
+                0,
+                minimum=-255,
+                maximum=255,
+            ),
+            auto_restart_seconds=_number(
+                ambilight_values, "auto_restart_seconds", 0.0, minimum=0.0
+            ),
+            single_light=_boolean(ambilight_values, "single_light", False),
+            sample_breadth=_number(
+                ambilight_values,
+                "sample_breadth",
+                0.15,
+                minimum=0.001,
+                maximum=1.0,
+            ),
+            update_interval_seconds=_number(
+                ambilight_values, "update_interval_seconds", 0.05, minimum=0.001
+            ),
+            post_stream_behavior=post_behavior,
+        ),
+        logging=LoggingConfig(level=log_level),
+        source_file=source,
+    )
+
+
+def load_credentials(path: str | Path, *, unattended: bool) -> HueCredentials:
+    """Load legacy client.json safely and enforce service-mode permissions."""
+
+    credential_path = Path(path).expanduser()
+    try:
+        metadata = credential_path.lstat()
+    except FileNotFoundError as exc:
+        raise ConfigError(
+            f"Hue credentials file not found: {credential_path}. "
+            "Register with the bridge in manual mode first."
+        ) from exc
+    except OSError as exc:
+        raise ConfigError(f"Cannot inspect Hue credentials file: {exc}") from exc
+
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise ConfigError("Hue credentials path must name a regular, non-symlink file")
+
+    mode = stat.S_IMODE(metadata.st_mode)
+    warning = None
+    if mode & 0o077:
+        message = (
+            f"Hue credentials permissions are {mode:04o}; "
+            f"run: chmod 600 {credential_path}"
+        )
+        if unattended:
+            raise ConfigError(message)
+        warning = message
+
+    try:
+        with credential_path.open("r", encoding="utf-8") as handle:
+            document = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigError(f"Cannot read Hue credentials JSON: {exc}") from exc
+
+    if not isinstance(document, dict):
+        raise ConfigError("Hue credentials JSON must contain an object")
+    username = document.get("username")
+    clientkey = document.get("clientkey")
+    if not isinstance(username, str) or not username:
+        raise ConfigError("Hue credentials JSON requires a non-empty username")
+    if not isinstance(clientkey, str) or not clientkey:
+        raise ConfigError("Hue credentials JSON requires a non-empty clientkey")
+
+    warnings = (warning,) if warning else ()
+    return HueCredentials(username=username, clientkey=clientkey, warnings=warnings)
