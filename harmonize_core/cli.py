@@ -1,4 +1,4 @@
-"""Terminal-independent Harmonize command-line runtime."""
+"""Persistent headless Harmonize command-line runtime."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import time
 
 from harmonize_config import (
     ConfigError,
+    ControlConfig,
     HarmonizeConfig,
     ReliabilityConfig,
     load_config,
@@ -20,10 +21,12 @@ from harmonize_config import (
 )
 
 from .capture import CaptureSource
-from .controller import HarmonizeController, LifecycleState
+from .controller import HarmonizeController
 from .errors import HarmonizeError
 from .hue import HueBridge, discover_bridge, resolve_area_name, resolve_group_id
+from .local_control import LocalCommandProvider
 from .observability import HealthFile, configure_logging, log_event
+from .state_machine import AmbilightSupervisor
 
 
 @dataclass(frozen=True)
@@ -40,14 +43,15 @@ class RuntimeOptions:
     sample_breadth: float
     update_interval_seconds: float
     logging_level: str
+    control: ControlConfig
     reliability: ReliabilityConfig
 
 
 class ShutdownCoordinator:
-    """Map every shutdown source to one idempotent controller request."""
+    """Map every process shutdown source to one idempotent request."""
 
-    def __init__(self, controller: HarmonizeController):
-        self.controller = controller
+    def __init__(self, target):
+        self.target = target
         self.requested = threading.Event()
         self.reason: str | None = None
 
@@ -55,7 +59,7 @@ class ShutdownCoordinator:
         if not self.requested.is_set():
             self.reason = reason
             self.requested.set()
-            self.controller.request_stop(reason)
+            self.target.request_stop(reason)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -83,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run-seconds",
         type=float,
-        help="diagnostic bounded run duration; omit to run until a signal",
+        help="diagnostic daemon duration; omit to run until a signal",
     )
     parser.add_argument(
         "--health-file",
@@ -93,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--inject-failure",
         choices=sorted(HarmonizeController.FAILURE_STAGES),
-        help="Milestone 4 cleanup diagnostic",
+        help="lifecycle cleanup and recovery diagnostic",
     )
     return parser
 
@@ -108,7 +112,6 @@ def _load_optional_config(args: argparse.Namespace) -> HarmonizeConfig | None:
                 "--unattended requires --config or an existing harmonize.toml"
             )
         return None
-    # Runtime selection is always deterministic in Milestone 4.
     return load_config(path, unattended=True)
 
 
@@ -133,6 +136,9 @@ def _runtime_options(
             sample_breadth=0.15,
             update_interval_seconds=0.0167,
             logging_level="DEBUG" if args.verbose else "INFO",
+            control=ControlConfig(
+                socket_path=Path("run/harmonize.sock").resolve()
+            ),
             reliability=ReliabilityConfig(),
         )
 
@@ -165,6 +171,7 @@ def _runtime_options(
         sample_breadth=config.ambilight.sample_breadth,
         update_interval_seconds=config.ambilight.update_interval_seconds,
         logging_level="DEBUG" if args.verbose else config.logging.level,
+        control=config.control,
         reliability=reliability,
     )
 
@@ -178,19 +185,18 @@ def _resolve_bridge(args: argparse.Namespace, options: RuntimeOptions) -> str:
 
 
 def _write_health(
-    reporter: HealthFile | None, controller: HarmonizeController
+    reporter: HealthFile | None, supervisor: AmbilightSupervisor
 ) -> None:
     if reporter is not None:
-        reporter.write(controller.health_snapshot())
+        reporter.write(supervisor.snapshot())
 
 
 def run(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     hue = None
-    controller = None
-    area = None
+    supervisor = None
     reporter = None
-    shutdown_timeout = 5.0
+    shutdown_timeout = 15.0
     old_handlers: dict[int, object] = {}
     try:
         if args.run_seconds is not None and args.run_seconds <= 0:
@@ -239,69 +245,79 @@ def run(argv: list[str] | None = None) -> int:
 
         reliability = options.reliability
         shutdown_timeout = reliability.shutdown_timeout_seconds
-        capture = CaptureSource(
-            device_index=options.capture_device,
-            backend=options.capture_backend,
-            stream_source=options.stream_source,
+
+        def controller_factory() -> HarmonizeController:
+            capture = CaptureSource(
+                device_index=options.capture_device,
+                backend=options.capture_backend,
+                stream_source=options.stream_source,
+                startup_timeout_seconds=reliability.startup_timeout_seconds,
+                read_timeout_seconds=reliability.capture_read_timeout_seconds,
+                reconnect_initial_seconds=(
+                    reliability.capture_reconnect_initial_seconds
+                ),
+                reconnect_max_seconds=reliability.capture_reconnect_max_seconds,
+                shutdown_timeout_seconds=min(
+                    reliability.shutdown_timeout_seconds / 3, 5.0
+                ),
+            )
+            return HarmonizeController(
+                hue=hue,
+                area=area,
+                capture=capture,
+                client_key=credentials.clientkey,
+                brightness_adjustment=options.brightness_adjustment,
+                sample_breadth=options.sample_breadth,
+                update_interval_seconds=options.update_interval_seconds,
+                single_light=options.single_light,
+                auto_restart_seconds=options.auto_restart_seconds,
+                transport_reconnect_attempts=(
+                    reliability.transport_reconnect_attempts
+                ),
+                transport_reconnect_initial_seconds=(
+                    reliability.transport_reconnect_initial_seconds
+                ),
+                hue_status_interval_seconds=(
+                    reliability.hue_status_interval_seconds
+                ),
+                failure_injection=args.inject_failure,
+            )
+
+        supervisor_box: dict[str, AmbilightSupervisor] = {}
+        provider = LocalCommandProvider(
+            options.control.socket_path,
+            status=lambda: supervisor_box["supervisor"].snapshot(),
+        )
+        supervisor = AmbilightSupervisor(
+            providers=[provider],
+            controller_factory=controller_factory,
             startup_timeout_seconds=reliability.startup_timeout_seconds,
-            read_timeout_seconds=reliability.capture_read_timeout_seconds,
-            reconnect_initial_seconds=(
-                reliability.capture_reconnect_initial_seconds
-            ),
-            reconnect_max_seconds=reliability.capture_reconnect_max_seconds,
-            shutdown_timeout_seconds=min(
-                reliability.shutdown_timeout_seconds / 3, 5.0
-            ),
+            shutdown_timeout_seconds=reliability.shutdown_timeout_seconds,
+            recovery_attempts=options.control.recovery_attempts,
+            recovery_initial_seconds=options.control.recovery_initial_seconds,
         )
-        controller = HarmonizeController(
-            hue=hue,
-            area=area,
-            capture=capture,
-            client_key=credentials.clientkey,
-            brightness_adjustment=options.brightness_adjustment,
-            sample_breadth=options.sample_breadth,
-            update_interval_seconds=options.update_interval_seconds,
-            single_light=options.single_light,
-            auto_restart_seconds=options.auto_restart_seconds,
-            transport_reconnect_attempts=(
-                reliability.transport_reconnect_attempts
-            ),
-            transport_reconnect_initial_seconds=(
-                reliability.transport_reconnect_initial_seconds
-            ),
-            hue_status_interval_seconds=(
-                reliability.hue_status_interval_seconds
-            ),
-            failure_injection=args.inject_failure,
-        )
-        coordinator = ShutdownCoordinator(controller)
+        supervisor_box["supervisor"] = supervisor
+        coordinator = ShutdownCoordinator(supervisor)
 
         def handle_signal(signum, frame) -> None:
             del frame
-            name = signal.Signals(signum).name
-            coordinator.request(name)
+            coordinator.request(signal.Signals(signum).name)
 
         for signum in (signal.SIGTERM, signal.SIGINT):
             old_handlers[signum] = signal.signal(signum, handle_signal)
 
         health_path = args.health_file or reliability.health_file
         reporter = HealthFile(health_path) if health_path is not None else None
-        controller.start_background()
-        _write_health(reporter, controller)
-        if not controller.ready.wait(reliability.startup_timeout_seconds):
+        supervisor.start_background()
+        if not supervisor.ready.wait(reliability.startup_timeout_seconds):
             coordinator.request("startup_timeout")
-            if not controller.join(reliability.shutdown_timeout_seconds):
-                raise HarmonizeError(
-                    "Controller did not stop after startup timeout"
-                )
             raise HarmonizeError(
-                "Controller did not become ready within "
+                "Supervisor did not become ready within "
                 f"{reliability.startup_timeout_seconds:g} seconds"
             )
-        _write_health(reporter, controller)
-        if controller.error is not None:
-            controller.join(reliability.shutdown_timeout_seconds)
-            raise HarmonizeError(str(controller.error))
+        if supervisor.finished.is_set() and supervisor.error is not None:
+            raise HarmonizeError(supervisor.error)
+        _write_health(reporter, supervisor)
 
         started = time.monotonic()
         deadline = (
@@ -309,27 +325,20 @@ def run(argv: list[str] | None = None) -> int:
             if args.run_seconds is not None
             else None
         )
-        while not controller.finished.wait(reliability.health_interval_seconds):
-            _write_health(reporter, controller)
+        while not supervisor.finished.wait(reliability.health_interval_seconds):
+            _write_health(reporter, supervisor)
             if deadline is not None and time.monotonic() >= deadline:
                 coordinator.request("run_duration_elapsed")
 
-        if not controller.join(reliability.shutdown_timeout_seconds):
+        if not supervisor.join(reliability.shutdown_timeout_seconds + 1.0):
             coordinator.request("shutdown_timeout")
-            # The worker is daemonized so process exit stays bounded. Make one
-            # explicit scoped stop attempt before reporting failure.
-            hue.stop_streaming(area)
             raise HarmonizeError(
-                "Controller did not stop within "
-                f"{reliability.shutdown_timeout_seconds:g} seconds"
+                "Supervisor did not stop within "
+                f"{reliability.shutdown_timeout_seconds + 1:g} seconds"
             )
-        _write_health(reporter, controller)
-        if controller.error is not None:
-            raise HarmonizeError(str(controller.error))
-        if controller.state is not LifecycleState.IDLE:
-            raise HarmonizeError(
-                f"Controller stopped in unexpected state {controller.state.value}"
-            )
+        _write_health(reporter, supervisor)
+        if supervisor.error is not None:
+            raise HarmonizeError(supervisor.error)
         log_event(
             logger,
             logging.INFO,
@@ -350,20 +359,12 @@ def run(argv: list[str] | None = None) -> int:
             print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     finally:
-        if controller is not None and not controller.finished.is_set():
-            controller.request_stop("cli_finalizer")
-            if (
-                not controller.join(shutdown_timeout)
-                and hue is not None
-                and area is not None
-            ):
-                try:
-                    hue.stop_streaming(area)
-                except Exception:
-                    pass
-        if reporter is not None and controller is not None:
+        if supervisor is not None and not supervisor.finished.is_set():
+            supervisor.request_stop("cli_finalizer")
+            supervisor.join(shutdown_timeout + 1.0)
+        if reporter is not None and supervisor is not None:
             try:
-                _write_health(reporter, controller)
+                _write_health(reporter, supervisor)
             except Exception:
                 pass
         for signum, handler in old_handlers.items():

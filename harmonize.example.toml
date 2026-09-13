@@ -12,8 +12,15 @@ backend = "gstreamer"
 # stream_source = "file-or-url"
 
 [control]
-# Milestone 2 supports validation of the local provider boundary only.
+# Local explicit commands use a user-owned Unix socket. Automatic provider
+# timing is defined now, but no automatic provider is enabled in Milestone 5.
 provider = "local"
+socket_path = "run/harmonize.sock"
+automatic_stale_seconds = 30.0
+automatic_enable_debounce_seconds = 1.0
+automatic_disable_grace_seconds = 5.0
+recovery_attempts = 3
+recovery_initial_seconds = 1.0
 
 [ambilight]
 video_wait_seconds = 2.0

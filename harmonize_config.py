@@ -36,6 +36,12 @@ class CaptureConfig:
 @dataclass(frozen=True)
 class ControlConfig:
     provider: str = "local"
+    socket_path: Path = Path("run/harmonize.sock")
+    automatic_stale_seconds: float = 30.0
+    automatic_enable_debounce_seconds: float = 1.0
+    automatic_disable_grace_seconds: float = 5.0
+    recovery_attempts: int = 3
+    recovery_initial_seconds: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -97,7 +103,15 @@ _SECTIONS = {
 _KEYS = {
     "hue": {"entertainment_area", "credentials_file", "bridge_ip"},
     "capture": {"device_index", "backend", "stream_source"},
-    "control": {"provider"},
+    "control": {
+        "provider",
+        "socket_path",
+        "automatic_stale_seconds",
+        "automatic_enable_debounce_seconds",
+        "automatic_disable_grace_seconds",
+        "recovery_attempts",
+        "recovery_initial_seconds",
+    },
     "ambilight": {
         "video_wait_seconds",
         "brightness_adjustment",
@@ -248,9 +262,17 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
     provider = _string(control_values, "provider", default="local")
     if provider != "local":
         raise ConfigError(
-            "control.provider must be local in Milestone 2; additional providers "
-            "will be added in later milestones"
+            "control.provider must be local; automatic providers are optional "
+            "and require a future configured adapter"
         )
+    socket_name = _string(
+        control_values, "socket_path", default="run/harmonize.sock"
+    )
+    assert socket_name is not None
+    socket_path = Path(socket_name).expanduser()
+    if not socket_path.is_absolute():
+        socket_path = source.parent / socket_path
+    socket_path = socket_path.resolve()
 
     post_behavior = _string(
         ambilight_values, "post_stream_behavior", default="restore"
@@ -309,7 +331,41 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
             backend=backend,
             stream_source=_string(capture_values, "stream_source", optional=True),
         ),
-        control=ControlConfig(provider=provider),
+        control=ControlConfig(
+            provider=provider,
+            socket_path=socket_path,
+            automatic_stale_seconds=_number(
+                control_values,
+                "automatic_stale_seconds",
+                30.0,
+                minimum=0.1,
+            ),
+            automatic_enable_debounce_seconds=_number(
+                control_values,
+                "automatic_enable_debounce_seconds",
+                1.0,
+                minimum=0.0,
+            ),
+            automatic_disable_grace_seconds=_number(
+                control_values,
+                "automatic_disable_grace_seconds",
+                5.0,
+                minimum=0.0,
+            ),
+            recovery_attempts=_integer(
+                control_values,
+                "recovery_attempts",
+                3,
+                minimum=0,
+                maximum=100,
+            ),
+            recovery_initial_seconds=_number(
+                control_values,
+                "recovery_initial_seconds",
+                1.0,
+                minimum=0.01,
+            ),
+        ),
         ambilight=AmbilightConfig(
             video_wait_seconds=_number(
                 ambilight_values, "video_wait_seconds", 2.0, minimum=0.0
