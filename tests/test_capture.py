@@ -78,6 +78,24 @@ class CaptureTests(unittest.TestCase):
         self.assertTrue(all(call == ("sample.mp4",) for call in fake_cv2.calls))
         self.assertTrue(fake_cv2.captures[0].released)
 
+    def test_device_path_reset_preserves_stable_path_and_backend(self):
+        fake_cv2 = FakeCv2()
+        source = self.make_source(
+            fake_cv2,
+            device_path="/dev/v4l/by-id/capture-video-index0",
+            backend="v4l2",
+        )
+        source.open()
+        source.request_reset()
+        self.assertTrue(wait_for(lambda: len(fake_cv2.calls) >= 2))
+        source.close()
+        self.assertTrue(
+            all(
+                call == ("/dev/v4l/by-id/capture-video-index0", 200)
+                for call in fake_cv2.calls
+            )
+        )
+
     def test_device_reset_preserves_index_and_backend(self):
         fake_cv2 = FakeCv2()
         source = self.make_source(

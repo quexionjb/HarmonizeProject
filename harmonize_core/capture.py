@@ -24,6 +24,7 @@ class CaptureSource:
         self,
         *,
         device_index: int = 0,
+        device_path: str | None = None,
         backend: str = "gstreamer",
         stream_source: str | None = None,
         startup_timeout_seconds: float = 10.0,
@@ -35,6 +36,7 @@ class CaptureSource:
         logger: logging.Logger | None = None,
     ):
         self.device_index = device_index
+        self.device_path = device_path
         self.backend = backend
         self.stream_source = stream_source
         self.startup_timeout_seconds = startup_timeout_seconds
@@ -61,6 +63,8 @@ class CaptureSource:
     def source_description(self) -> str:
         if self.stream_source is not None:
             return self.stream_source
+        if self.device_path is not None:
+            return self.device_path
         return f"/dev/video{self.device_index}"
 
     def _new_capture(self):
@@ -71,7 +75,8 @@ class CaptureSource:
             "v4l2": self._cv2.CAP_V4L2,
             "any": self._cv2.CAP_ANY,
         }[self.backend]
-        return self._cv2.VideoCapture(self.device_index, backend_id)
+        source = self.device_path if self.device_path is not None else self.device_index
+        return self._cv2.VideoCapture(source, backend_id)
 
     def _release_handle(self) -> None:
         capture, self._capture = self._capture, None

@@ -182,9 +182,13 @@ The ambilight.exception_cleanup_behavior setting applies only to exceptional
 startup/runtime cleanup and defaults to restoring captured pre-session state.
 The owner-only local Unix socket has no network listener. SIGTERM and SIGINT
 perform bounded capture, DTLS, Hue, provider, and socket cleanup. The example
-configuration writes an
-atomic non-secret health snapshot to run/harmonize-health.json. A systemd
-service unit is planned for a later milestone.
+configuration writes an atomic non-secret health snapshot to
+run/harmonize-health.json.
+
+For appliance operation on the validated Raspberry Pi, install and operate the
+native boot-started service using docs/milestone-7-systemd.md. The service runs
+under a dedicated unprivileged identity, uses the stable capture-device path,
+logs to journald, and remains in IDLE until an explicit ON command.
 
 **Command line arguments:**
 
@@ -194,9 +198,10 @@ service unit is planned for a later milestone.
 * --health-file overrides the configured health snapshot path.
 * -v, -g, -b, -i, -s, -w, -f, -l, and -a remain accepted for compatibility.
 
-See docs/milestone-4-headless-reliability.md for resource recovery details and
-docs/milestone-5-state-machine.md for commands, provider policy, state, live
-validation evidence, and rollback.
+See docs/milestone-4-headless-reliability.md for resource recovery details,
+docs/milestone-5-state-machine.md for provider policy and state, and
+docs/milestone-7-systemd.md for appliance installation, commands, logs, and
+rollback.
 
 # Troubleshooting
 

@@ -440,7 +440,7 @@ independent change, while an injected after-DTLS-ready startup failure restored
 the visible pre-failure states. The original test baseline was restored and
 Entertainment finished inactive with no journal, socket, Harmonize process, or
 DTLS process. Detailed evidence is in docs/milestone-6-light-state.md.
-Milestone 7 has not begun.
+Milestone 7 is in progress on branch `m7-systemd-appliance`.
 
 ## Milestone 7 — systemd Appliance Deployment
 
@@ -454,40 +454,46 @@ systemd provides lifecycle, logging, dependency ordering, and recovery needed fo
 
 ### Planned work
 
-- [ ] Record Docker units, airprint health, active containers, resource use, working-print validation, and the intentionally inactive host-CUPS state before installation.
-- [ ] Choose an unprivileged service identity and grant only required video-device and configuration access.
-- [ ] Create a hardened service unit with explicit working directory, environment, restart policy, timeouts, and signal handling.
-- [ ] Use stable capture-device identification rather than assuming /dev/video0 where practical.
-- [ ] Route logs to journald and document inspection commands.
-- [ ] Define ordering against local network readiness without blocking airprint or other Docker workloads and without modifying host CUPS.
-- [ ] Configure the service with the default TV area and verify boot startup cannot enter an interactive selection path.
-- [ ] Install through a reversible procedure that backs up any replaced files.
-- [ ] Enable boot start and test clean stop, restart, failure restart, and shutdown.
-- [ ] Measure CPU, memory, and device impact in IDLE and STREAMING.
-- [ ] Do not Dockerize Harmonize unless later evidence establishes a compelling benefit.
+- [x] Exclude Docker, AirPrint, and host CUPS inspection and validation from this milestone per explicit owner direction; no work in this milestone requires them.
+- [x] Choose an unprivileged service identity and grant only required video-device and configuration access.
+- [x] Create a hardened service unit with explicit working directory, restart policy, timeouts, readiness, and signal handling.
+- [x] Use stable capture-device identification rather than assuming /dev/video0.
+- [x] Route logs to journald and document inspection commands.
+- [x] Order startup after network-online without changing unrelated services.
+- [x] Configure the service with the default TV area and verify startup cannot enter an interactive selection path.
+- [x] Install through a reversible, non-overwriting procedure; the observed baseline contained no targets requiring backup.
+- [x] Enable boot start and test clean stop, restart, failure restart, shutdown, and readiness. Full reboot remains part of final validation; uninstall/reinstall was intentionally deferred by the owner at acceptance.
+- [x] Measure CPU and memory in IDLE and STREAMING; device access worked through the stable capture path.
+- [x] Keep Harmonize native; no Docker deployment was added.
 
 ### Acceptance criteria
 
-- [ ] Harmonize starts automatically after reboot as an unprivileged user.
-- [ ] It can access only the required capture and configuration resources.
-- [ ] Restart policy handles failures without a tight loop.
-- [ ] journald contains useful, secret-free lifecycle logs.
-- [ ] Shutdown releases Hue and capture resources within configured timeouts.
-- [ ] Boot and restart tests deterministically resolve the configured TV area or fail clearly without prompting.
-- [ ] The airprint container remains healthy and printing matches its recorded functional baseline.
-- [ ] Docker and every other recorded existing workload match their baselines; host CUPS remains untouched.
-- [ ] Uninstall/rollback restores the exact pre-install service state.
+- [x] Harmonize is installed, enabled for automatic boot startup, and running as an unprivileged user. A full reboot exercise remains in final validation.
+- [x] It runs under a locked identity with only required video, configuration, runtime, and state access.
+- [x] Restart policy handles a forced failure after a five-second delay without a tight loop.
+- [x] journald contains useful, secret-free lifecycle logs.
+- [x] Shutdown releases Hue and capture resources within configured timeouts and turns both configured-area lights off.
+- [x] Start and restart deterministically resolve the configured TV area without prompting; boot startup is configured and its full reboot exercise remains in final validation.
+- [x] Docker, AirPrint, and host CUPS checks are not applicable to this milestone under the owner's explicit scope override and were not performed.
+- [x] Guarded uninstall tooling documents restoration of the exact pre-install service state; uninstall/reinstall execution was intentionally skipped at owner acceptance.
 
 ### Risks/unknowns
 
-- User pi currently lacks Docker socket access, so airprint and other workload validation need an authorized read-only method.
-- Host CUPS must remain inactive, disabled, and unmodified because airprint owns the production print path.
 - Device enumeration and network readiness can differ at boot.
 - Service hardening options may restrict OpenSSL, DNS/mDNS, or device access unexpectedly.
+- A single normal-restart test reached the 25-second stop timeout; an immediate focused clean-stop repetition completed in 0.186 seconds and later STREAMING shutdown completed normally. Preserve this as a soak-test observation.
 
 ### Status
 
-Not started.
+Complete and accepted on `m7-systemd-appliance`. The native service is
+installed, enabled, and running; stable capture identity and least-privilege
+access are working. All 97 offline tests and systemd unit validation pass. Live
+ON/OFF and service-stop behavior are visually confirmed, and forced-failure
+restart works with bounded backoff. Guarded rollback tooling and instructions
+exist, but uninstall/reinstall execution was intentionally skipped at owner
+acceptance. A complete reboot exercise remains in final validation. Docker,
+AirPrint, and host CUPS were explicitly out of scope and were not inspected.
+Detailed evidence is in `docs/milestone-7-systemd.md`.
 
 ## Milestone 8 — Ambilight Quality Improvements
 

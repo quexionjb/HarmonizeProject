@@ -110,6 +110,27 @@ class ConfigTests(unittest.TestCase):
             (self.root / "secrets/client.json").resolve(),
         )
 
+    def test_stable_capture_device_path_is_resolved(self):
+        path = self.write_config(
+            '[hue]\nentertainment_area = "TV area"\n'
+            '[capture]\ndevice_path = "/dev/v4l/by-id/capture-video-index0"\n'
+            'backend = "v4l2"\n'
+        )
+        config = load_config(path, unattended=True)
+        self.assertEqual(
+            config.capture.device_path,
+            Path("/dev/v4l/by-id/capture-video-index0"),
+        )
+
+    def test_device_path_and_stream_source_are_mutually_exclusive(self):
+        path = self.write_config(
+            '[hue]\nentertainment_area = "TV area"\n'
+            '[capture]\ndevice_path = "/dev/video0"\n'
+            'stream_source = "sample.mp4"\n'
+        )
+        with self.assertRaisesRegex(ConfigError, "mutually exclusive"):
+            load_config(path, unattended=True)
+
     def test_reconnect_backoff_max_must_not_be_smaller_than_initial(self):
         path = self.write_config(
             '[hue]\nentertainment_area = "TV area"\n'

@@ -37,6 +37,7 @@ class RuntimeOptions:
     credentials_file: Path
     entertainment_area: str | None
     capture_device: int
+    capture_device_path: str | None
     capture_backend: str
     stream_source: str | None
     brightness_adjustment: int
@@ -128,6 +129,7 @@ def _runtime_options(
             credentials_file=Path("client.json").resolve(),
             entertainment_area=None,
             capture_device=0,
+            capture_device_path=None,
             capture_backend="gstreamer",
             stream_source=args.stream_filename,
             brightness_adjustment=(
@@ -163,6 +165,11 @@ def _runtime_options(
         credentials_file=config.hue.credentials_file,
         entertainment_area=config.hue.entertainment_area,
         capture_device=config.capture.device_index,
+        capture_device_path=(
+            str(config.capture.device_path)
+            if config.capture.device_path is not None
+            else None
+        ),
         capture_backend=config.capture.backend,
         stream_source=args.stream_filename or config.capture.stream_source,
         brightness_adjustment=(
@@ -295,6 +302,7 @@ def run(argv: list[str] | None = None) -> int:
         def controller_factory() -> HarmonizeController:
             capture = CaptureSource(
                 device_index=options.capture_device,
+                device_path=options.capture_device_path,
                 backend=options.capture_backend,
                 stream_source=options.stream_source,
                 startup_timeout_seconds=reliability.startup_timeout_seconds,

@@ -29,6 +29,7 @@ class HueConfig:
 @dataclass(frozen=True)
 class CaptureConfig:
     device_index: int = 0
+    device_path: Path | None = None
     backend: str = "gstreamer"
     stream_source: str | None = None
 
@@ -112,7 +113,7 @@ _SECTIONS = {
 }
 _KEYS = {
     "hue": {"entertainment_area", "credentials_file", "bridge_ip"},
-    "capture": {"device_index", "backend", "stream_source"},
+    "capture": {"device_index", "device_path", "backend", "stream_source"},
     "control": {
         "provider",
         "socket_path",
@@ -275,6 +276,20 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
     backend = _string(capture_values, "backend", default="gstreamer")
     if backend not in {"gstreamer", "v4l2", "any"}:
         raise ConfigError("capture.backend must be one of: gstreamer, v4l2, any")
+    device_path_name = _string(capture_values, "device_path", optional=True)
+    device_path = None
+    if device_path_name is not None:
+        device_path = Path(device_path_name).expanduser()
+        if not device_path.is_absolute():
+            device_path = source.parent / device_path
+        # Keep stable /dev/v4l/by-id symlinks intact instead of canonicalizing
+        # them back to enumeration-dependent /dev/videoN names.
+        device_path = device_path.absolute()
+    stream_source = _string(capture_values, "stream_source", optional=True)
+    if device_path is not None and stream_source is not None:
+        raise ConfigError(
+            "capture.device_path and capture.stream_source are mutually exclusive"
+        )
 
     provider = _string(control_values, "provider", default="local")
     if provider != "local":
@@ -356,8 +371,9 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
             device_index=_integer(
                 capture_values, "device_index", 0, minimum=0, maximum=255
             ),
+            device_path=device_path,
             backend=backend,
-            stream_source=_string(capture_values, "stream_source", optional=True),
+            stream_source=stream_source,
         ),
         control=ControlConfig(
             provider=provider,

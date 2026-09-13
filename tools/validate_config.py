@@ -56,9 +56,10 @@ def main() -> int:
     area = config.hue.entertainment_area or "<interactive selection>"
     print(f"configuration valid ({args.mode} mode)")
     print(f"Hue Entertainment area: {area}")
+    capture_target = config.capture.device_path or config.capture.device_index
     print(
         "capture backend/device: "
-        f"{config.capture.backend}/{config.capture.device_index}"
+        f"{config.capture.backend}/{capture_target}"
     )
     print(f"control provider: {config.control.provider}")
     if args.check_credentials:
