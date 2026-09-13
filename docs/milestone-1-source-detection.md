@@ -64,7 +64,17 @@ At 2026-09-13T19:02:03Z, the TV was on and the HDMI source was confirmed activel
 - First frame arrived in 1.478 ms.
 - Median interarrival time was 18.124 ms; 95th percentile was 18.217 ms; maximum was 31.041 ms.
 - No resolution or shape change occurred.
-- Content metrics were not collected.
+- Content metrics were not collected in the first run.
+
+A matching 15-second content-metrics run at 2026-09-13T19:09:39Z used confirmed moving video:
+
+- 828 frames produced 827 temporal comparisons.
+- Median temporal mean absolute difference was 0.718 and the 95th percentile was 3.998.
+- 308 comparisons were near-identical, a fraction of 0.372430.
+- Mean sampled luma had a median of 41.501 and a 95th percentile of 54.584.
+- Minimum luma was 0.0 and maximum temporal difference was 61.633, including capture startup.
+
+Moving video therefore differs strongly from the standby fallback, but paused or intentionally static active content remains a possible false-negative case.
 
 ## Controlled source-standby observation
 
@@ -89,7 +99,7 @@ The WARRKY adapter therefore continues normal frame delivery in standby but appe
 
 | Condition | Frame delivery | Timing and format | Content metrics | Result |
 | --- | --- | --- | --- | --- |
-| HDMI source actively playing | 828/828 frames; no failures | 720x480; 55.161 FPS; 18.124 ms median interval | Not needed yet | Continuous stable delivery |
+| HDMI source actively playing | 828/828 frames; no failures | 720x480; 55.161 FPS; 18.124 ms median interval | 37.2430% near-identical; median temporal difference 0.718 | Continuous changing video |
 | HDMI source off or in standby | 829/829 frames; no failures | 720x480; 55.169 FPS; 18.117 ms median interval | 99.6377% near-identical; median temporal difference 0.0 | Continuous static fallback |
 | TV off, HDMI source active | Pending | Pending | Only if needed | Pending |
 | Active to inactive transition | Pending | Pending | Only if needed | Pending |
