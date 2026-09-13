@@ -106,11 +106,11 @@ Automatic control is only trustworthy if active and inactive source states can b
 
 - [x] Record USB identity, driver, V4L2 capabilities, supported formats, resolutions, and frame rates for the capture device associated with /dev/video0.
 - [x] Measure frame availability, read latency, timestamps, resolution, and device state while the HDMI source is actively playing.
-- [ ] Repeat measurements with the HDMI source powered off or in standby.
+- [x] Repeat measurements with the HDMI source powered off or in standby.
 - [ ] Repeat with the TV off while the HDMI source remains active.
 - [ ] Measure active-to-inactive and inactive-to-active transitions, including timing and transient errors.
 - [ ] Determine whether device state, frame delivery, timing, resolution changes, or frame contents provide the most reliable signal.
-- [ ] Analyze frame contents only if lower-level signals are insufficient.
+- [x] Analyze frame contents only if lower-level signals are insufficient.
 - [x] Check installed HDMI-CEC devices, kernel support, and user-space tools without assuming CEC is required.
 - [x] Build a repeatable, read-only capture diagnostic and record results.
 - [x] Avoid Hue bridge contact or control unless a compelling need is explained and approved first.

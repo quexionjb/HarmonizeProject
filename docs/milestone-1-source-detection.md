@@ -66,12 +66,31 @@ At 2026-09-13T19:02:03Z, the TV was on and the HDMI source was confirmed activel
 - No resolution or shape change occurred.
 - Content metrics were not collected.
 
+## Controlled source-standby observation
+
+At 2026-09-13T19:06:13Z, the TV remained on while the HDMI source was confirmed off or in standby:
+
+- The non-content probe opened successfully and delivered 829 frames with zero failed reads in 15.026 seconds.
+- Reported format remained 720x480 at 60 FPS with no shape change.
+- Effective rate was 55.169 FPS and median interarrival was 18.117 ms.
+- Frame delivery, timing, and format were effectively indistinguishable from active playback.
+
+Because lower-level signals were insufficient, a second 15-second run collected aggregate content metrics without saving frames:
+
+- 829 frames produced 828 temporal comparisons.
+- Median and 95th-percentile temporal mean absolute difference were both 0.0.
+- 825 comparisons were near-identical, a fraction of 0.996377.
+- Mean sampled luma had a median and maximum of exactly 62.027.
+- Minimum luma was 0.0 and maximum temporal difference was 62.027, consistent with a brief startup transition into a fixed fallback frame.
+
+The WARRKY adapter therefore continues normal frame delivery in standby but appears to emit a static fallback image. Device-open state, read success, frame timing, and resolution cannot distinguish active playback from standby on their own.
+
 ## Test matrix
 
 | Condition | Frame delivery | Timing and format | Content metrics | Result |
 | --- | --- | --- | --- | --- |
 | HDMI source actively playing | 828/828 frames; no failures | 720x480; 55.161 FPS; 18.124 ms median interval | Not needed yet | Continuous stable delivery |
-| HDMI source off or in standby | Pending | Pending | Only if needed | Pending |
+| HDMI source off or in standby | 829/829 frames; no failures | 720x480; 55.169 FPS; 18.117 ms median interval | 99.6377% near-identical; median temporal difference 0.0 | Continuous static fallback |
 | TV off, HDMI source active | Pending | Pending | Only if needed | Pending |
 | Active to inactive transition | Pending | Pending | Only if needed | Pending |
 | Inactive to active transition | Pending | Pending | Only if needed | Pending |
@@ -89,9 +108,9 @@ Use the same source, splitter, capture connection, probe duration, backend, and 
 
 ## Current hypotheses
 
-1. If reads fail or block promptly when HDMI disappears, frame delivery is the simplest detector.
-2. If reads continue but format or timing changes consistently, that lower-level transition may be sufficient.
-3. If the adapter emits continuous fallback or frozen frames, aggregate temporal/content measurements will be necessary.
+1. Frame delivery cannot distinguish active playback from source standby because both states deliver continuously.
+2. Steady-state format and timing cannot distinguish those states on this adapter.
+3. Aggregate temporal change is a promising signal because the standby output settles into a fixed fallback frame.
 4. CEC should be excluded if the Pi output adapters cannot observe the upstream TV/source topology reliably.
 
 ## Open questions
