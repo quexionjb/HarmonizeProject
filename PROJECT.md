@@ -2,7 +2,7 @@
 
 ## Objective
 
-Turn Harmonize into an appliance-like Ambilight service on this Raspberry Pi 5 running Ubuntu. The service should run unattended, detect whether the HDMI/video source is worth illuminating, start and stop Hue Entertainment streaming automatically, and restore the affected lights or turn them off afterward. It must coexist safely with the Pi's CUPS print service and Docker workloads.
+Turn Harmonize into an appliance-like Ambilight service on this Raspberry Pi 5 running Ubuntu. The service should run unattended, detect whether the HDMI/video source is worth illuminating, start and stop Hue Entertainment streaming automatically, and restore the affected lights or turn them off afterward. It must coexist safely with the production airprint Docker print service and the Pi's other Docker workloads; host-level CUPS is intentionally inactive and out of scope.
 
 This roadmap is the persistent tracker for that work. Implementation stops at every milestone boundary for review and explicit authorization.
 
@@ -15,8 +15,8 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 - Capture: /dev/video0 and /dev/video1 exist, along with Pi codec devices. User pi belongs to the video group. Capture behavior under HDMI state changes is not yet characterized.
 - Harmonize: upstream v2.4.2 at commit 51b4f52; no Harmonize process or systemd service was running during discovery.
 - Hue: client.json exists only as a local ignored file in the current checkout. The current file is not tracked and its content hash does not match historical client.json blobs. Older upstream history did track files at that path before removing it, so history must never be treated as a safe place for credentials.
-- Docker: docker.service was active and enabled at the Milestone 0 baseline. User pi could not read the Docker API socket, so running workloads remain to be inventoried through an authorized read-only method before service deployment.
-- CUPS: cups.service was inactive and disabled at the Milestone 0 baseline, despite CUPS being an existing workload that must remain protected. Its intended activation method and known-good print behavior must be established before deployment work.
+- Docker: docker.service was active and enabled at the Milestone 0 baseline. The existing airprint container is the production print service and printing is working normally. User pi cannot read the Docker API socket, so container health and other workloads require an authorized read-only validation method.
+- Host CUPS: cups.service is inactive and disabled by design because printing is provided by airprint. Do not install, enable, start, reconfigure, or otherwise modify host-level CUPS.
 - Deployment: the application currently depends on an interactive terminal or screen session and uses no native service unit.
 - Architecture: harmonize.py combines discovery, Hue API access, capture, analysis, HueStream encoding, DTLS transport, threading, and interactive lifecycle control in one process.
 
@@ -26,7 +26,7 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 - Preserve a known-working state at every milestone.
 - Make small, reviewable commits.
 - Do not mix unrelated milestones in one change.
-- Do not disrupt CUPS or Docker.
+- Do not disrupt CUPS or Docker: preserve the airprint container and other Docker workloads, and leave host-level CUPS untouched.
 - Do not expose Hue credentials or other secrets.
 - Prefer measurement and testing over assumptions about the hardware.
 - Preserve working Harmonize behavior before trying to improve its visual output.
@@ -47,7 +47,7 @@ This roadmap is the persistent tracker for that work. Implementation stops at ev
 
 ## Rollback Philosophy
 
-Each milestone begins from a known commit and ends at a separately reviewable commit. Before installing files outside the repository, capture the current file, package, service, permissions, and workload state needed to reverse the operation. Repository rollback should normally mean checking out the previous accepted commit or reverting the milestone commit. System rollback must restore prior service units and configuration, reload systemd when needed, and verify CUPS and Docker against their recorded baselines. Avoid irreversible migrations; credential and configuration changes require a documented recovery path.
+Each milestone begins from a known commit and ends at a separately reviewable commit. Before installing files outside the repository, capture the current file, package, service, permissions, and workload state needed to reverse the operation. Repository rollback should normally mean checking out the previous accepted commit or reverting the milestone commit. System rollback must restore prior service units and configuration, reload systemd when needed, verify airprint and other Docker workloads against their recorded baselines, and leave host-level CUPS untouched. Avoid irreversible migrations; credential and configuration changes require a documented recovery path.
 
 # Milestones
 
@@ -68,9 +68,9 @@ Credentials and unrelated appliance workloads must be protected before experimen
 - [x] Expand .gitignore for credentials, secret-bearing local configuration, virtual environments, caches, logs, and runtime files.
 - [x] Create modernize from upstream v2.4.2 commit 51b4f52.
 - [x] Commit repository housekeeping separately.
-- [x] Record the observed Pi, capture, Python, OpenCV, CUPS, and Docker baseline.
+- [x] Record the observed Pi, capture, Python, OpenCV, airprint/Docker, and intentionally inactive host-CUPS baseline.
 - [x] Create and commit this roadmap.
-- [ ] Push modernize to origin and record whether Git authentication permits it.
+- [x] Push modernize to origin and record whether Git authentication permits it.
 
 ### Acceptance criteria
 
@@ -78,19 +78,19 @@ Credentials and unrelated appliance workloads must be protected before experimen
 - [x] Local master tracks origin/master.
 - [x] modernize contains a focused repository-housekeeping commit.
 - [x] PROJECT.md contains objectives, work, acceptance criteria, risks, and status for every milestone.
-- [x] No capture experiment, Hue request, service installation, CUPS change, or Docker change has occurred.
-- [ ] The push outcome is reported at the milestone review.
+- [x] No capture experiment, Hue request, service installation, host-CUPS change, or Docker change has occurred.
+- [x] The push outcome is reported at the milestone review.
 
 ### Risks/unknowns
 
 - Upstream history previously contained client.json files, so historical credentials may have existed even though the current credential is distinct.
-- GitHub connector access and local Git command authentication are separate; the fork may be writable through the connector while git push is not authenticated.
-- Docker workloads cannot yet be inventoried by user pi.
-- CUPS is currently inactive and disabled, so its expected operating baseline needs clarification before deployment.
+- GitHub connector access and local Git command authentication are separate; local GitHub CLI authentication is now configured and modernize tracks origin/modernize.
+- User pi cannot access the Docker socket directly, so airprint health and other workload details require an authorized read-only validation method.
+- Host CUPS is intentionally inactive and disabled; changing that state would conflict with the production airprint architecture.
 
 ### Status
 
-Complete locally; remote push verification remains part of the final Milestone 0 handoff.
+Complete. The baseline commits are on origin/modernize.
 
 ## Milestone 1 — Determine Reliable TV/Source Activity Detection
 
@@ -155,7 +155,7 @@ The current manually assembled environment and script-level options are difficul
 - [ ] Preserve direct use of the existing client.json or provide an explicit, reversible migration tool.
 - [ ] Add validation with useful errors and no secret values in logs.
 - [ ] Document setup without requiring Docker.
-- [ ] Verify that installation steps do not alter CUPS or Docker packages, services, networks, or permissions.
+- [ ] Verify that installation steps leave host CUPS untouched and do not alter airprint or other Docker packages, services, networks, containers, or permissions.
 
 ### Acceptance criteria
 
@@ -352,12 +352,12 @@ systemd provides lifecycle, logging, dependency ordering, and recovery needed fo
 
 ### Planned work
 
-- [ ] Record CUPS units, Docker units, active containers, resource use, and known-good checks before installation.
+- [ ] Record Docker units, airprint health, active containers, resource use, working-print validation, and the intentionally inactive host-CUPS state before installation.
 - [ ] Choose an unprivileged service identity and grant only required video-device and configuration access.
 - [ ] Create a hardened service unit with explicit working directory, environment, restart policy, timeouts, and signal handling.
 - [ ] Use stable capture-device identification rather than assuming /dev/video0 where practical.
 - [ ] Route logs to journald and document inspection commands.
-- [ ] Define ordering against local network readiness without blocking Docker or CUPS.
+- [ ] Define ordering against local network readiness without blocking airprint or other Docker workloads and without modifying host CUPS.
 - [ ] Install through a reversible procedure that backs up any replaced files.
 - [ ] Enable boot start and test clean stop, restart, failure restart, and shutdown.
 - [ ] Measure CPU, memory, and device impact in IDLE and STREAMING.
@@ -370,14 +370,14 @@ systemd provides lifecycle, logging, dependency ordering, and recovery needed fo
 - [ ] Restart policy handles failures without a tight loop.
 - [ ] journald contains useful, secret-free lifecycle logs.
 - [ ] Shutdown releases Hue and capture resources within configured timeouts.
-- [ ] CUPS matches its recorded functional baseline.
-- [ ] Docker and every recorded existing workload match their baselines.
+- [ ] The airprint container remains healthy and printing matches its recorded functional baseline.
+- [ ] Docker and every other recorded existing workload match their baselines; host CUPS remains untouched.
 - [ ] Uninstall/rollback restores the exact pre-install service state.
 
 ### Risks/unknowns
 
-- User pi currently lacks Docker socket access, so workload validation needs an authorized method.
-- CUPS is currently inactive/disabled and its intended steady state is not yet established.
+- User pi currently lacks Docker socket access, so airprint and other workload validation need an authorized read-only method.
+- Host CUPS must remain inactive, disabled, and unmodified because airprint owns the production print path.
 - Device enumeration and network readiness can differ at boot.
 - Service hardening options may restrict OpenSSL, DNS/mDNS, or device access unexpectedly.
 
@@ -446,8 +446,8 @@ The project is complete only when it can be maintained and recovered without rec
 - [ ] Test temporary capture failure and reconnection.
 - [ ] Test temporary Hue/network failure where practical and safe.
 - [ ] Test service stop, start, restart, failure restart, SIGTERM, and shutdown.
-- [ ] Verify CUPS against its agreed print-server baseline.
-- [ ] Verify Docker service and every recorded workload against baseline.
+- [ ] Verify that the airprint container remains healthy and complete a working-print check.
+- [ ] Verify Docker service and every other recorded workload against baseline; confirm host CUPS was not modified.
 - [ ] Record idle/streaming CPU, memory, temperature, frame rate, and recovery timing.
 - [ ] Document installation, configuration, credentials, operation, logs, troubleshooting, updates from upstream, backup, and rollback.
 - [ ] Perform a clean-install rehearsal or equivalent reproducibility review.
@@ -458,7 +458,7 @@ The project is complete only when it can be maintained and recovered without rec
 - [ ] Every end-to-end scenario has a recorded result and any failure has an explicit disposition.
 - [ ] Repeated source cycles do not leak processes, threads, file descriptors, Hue sessions, or unwanted light state.
 - [ ] Reboot and service recovery require no terminal interaction.
-- [ ] CUPS and Docker remain functional according to recorded baselines.
+- [ ] Airprint printing and all other Docker workloads remain functional according to recorded baselines; host CUPS remains untouched.
 - [ ] A new operator can install, configure, diagnose, update, and roll back using the documentation.
 - [ ] Credentials are absent from Git history, logs, examples, and diagnostic bundles produced by the modernization work.
 - [ ] The final release has a clear previous known-good rollback point.
@@ -467,7 +467,7 @@ The project is complete only when it can be maintained and recovered without rec
 
 - Some network and bridge failures may be difficult to reproduce safely.
 - Reboot ordering can expose races not visible in interactive testing.
-- CUPS validation may require a physical print test and Docker validation may require elevated read-only access.
+- Airprint validation may require a physical print test, and Docker health inspection requires an authorized read-only access method.
 - Long-duration reliability may reveal thermal or resource contention not seen in short tests.
 
 ### Status
