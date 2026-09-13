@@ -382,13 +382,11 @@ The lifecycle must behave consistently whether desired state comes from manual l
 
 ### Status
 
-Complete on branch m5-state-machine. Sixty-nine offline tests and a real
-read-only IDLE/OFF check pass. Three approved live ON/STATUS/OFF cycles each
-created one fresh controller, reached STREAMING, cleaned up to IDLE, and kept
-the daemon responsive between cycles. Final read-only Hue status was inactive.
-The Unix-socket API, arbitration and fail-safe policy, validation evidence, and
-rollback point are documented. Homebridge/HomeKit and all automatic providers
-remain deferred. Stop for review before Milestone 6.
+Accepted and integrated into modernize at 66d5495. Sixty-nine offline tests and
+a real read-only IDLE/OFF check passed. Three approved live ON/STATUS/OFF cycles
+each created one fresh controller, reached STREAMING, cleaned up to IDLE, and
+kept the daemon responsive between cycles. Final read-only Hue status was
+inactive. Homebridge/HomeKit and all automatic providers remain deferred.
 
 ## Milestone 6 — Hue Light State Management
 
@@ -402,17 +400,17 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 
 ### Planned work
 
-- [ ] Identify every Hue resource affected by the selected entertainment configuration.
-- [ ] Determine which state fields can be read and restored reliably through the Hue v2 API.
-- [ ] Capture state immediately before taking control and associate it with the session.
-- [ ] Implement configurable post-Ambilight modes restore and off.
+- [x] Identify every Hue resource affected by the selected entertainment configuration.
+- [x] Determine which state fields can be read and restored reliably through the Hue v2 API for the current static Hue Play resources; live verification remains pending.
+- [x] Capture state immediately before taking control and associate it with the session.
+- [x] Implement configurable post-Ambilight modes restore and off; live verification remains pending.
 - [ ] Prefer restore as the default only after reliability is demonstrated.
-- [ ] Define behavior when lights change externally during streaming.
-- [ ] Handle process crash, bridge loss, partial restore, and stale saved-state scenarios.
-- [ ] Ensure saved state contains no credentials and has safe lifecycle/permissions.
+- [x] Define behavior when lights change externally during streaming.
+- [x] Implement guarded offline handling for process crash, bridge loss, partial restore, and stale saved-state scenarios; live failure verification remains pending.
+- [x] Ensure saved state contains no credentials and has safe lifecycle/permissions.
 - [ ] Run approved live restore and off tests only against lights in the resolved TV area.
 - [ ] Record pre-test state and verify post-test state after normal stop and injected failure.
-- [ ] Test against controlled light states with an explicit recovery procedure.
+- [x] Test against controlled fake light states and document the pending live recovery procedure.
 
 ### Acceptance criteria
 
@@ -433,7 +431,13 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 
 ### Status
 
-Not started.
+In progress on branch m6-light-state at the pre-live checkpoint documented in
+docs/HANDOFF-MILESTONE-6.md. The offline implementation commit is d88e7b7 and
+all 87 tests pass. Read-only live discovery and journal preflight succeeded;
+the temporary preflight journal was explicitly discarded. No Milestone 6 Hue
+state change has occurred. Restore, injected-failure cleanup, off mode, physical
+appearance, and final original-state recovery still require the documented
+user-observed live validation. Milestone 6 is not accepted or complete.
 
 ## Milestone 7 — systemd Appliance Deployment
 
