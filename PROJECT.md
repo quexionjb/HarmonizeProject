@@ -74,6 +74,20 @@ The lifecycle controller must not contain provider-specific logic. It accepts a 
 
 Automatic providers must be optional and replaceable. Manual control must remain available when no reliable automatic TV-state signal exists. Provider arbitration, authentication, stale-command handling, and fail-safe behavior will be specified before implementation.
 
+## Hue Integration Testing Policy
+
+Hue validation proceeds in controlled stages:
+
+- Milestone 2 uses offline configuration, schema, and credential-path tests. It defines the non-secret setting hue.entertainment_area = "TV area" but does not require a live bridge.
+- Milestone 3 begins with a read-only live query that resolves the configured area name to exactly one bridge resource. A missing or ambiguous area must fail with an actionable error before Entertainment streaming starts.
+- Milestone 3 then performs a separately approved manual start/stream/stop test against only the configured TV area after offline component tests pass.
+- Milestone 4 exercises live partial-startup cleanup, DTLS/bridge recovery, signals, and bounded shutdown under an approved failure-injection procedure.
+- Milestone 5 validates explicit ON/OFF/STATUS lifecycle cycles against the configured area after provider and state-machine tests pass offline.
+- Milestone 6 performs controlled live light-state capture and restore/off tests with a recorded manual recovery procedure.
+- Milestone 9 repeats end-to-end Hue validation, including missing-area, temporary network failure, service restart, cleanup, and post-Ambilight light state.
+
+Every live-Hue test requires a stated scope, expected light behavior, cleanup path, and rollback point. Record the selected Entertainment area and pre/post state without logging credentials. Confirm streaming is stopped after each test, including failed tests. Do not contact or control the bridge merely to validate parsing or other behavior that can be tested offline.
+
 # Milestones
 
 ## Milestone 0 — Repository and Safety Baseline
@@ -176,7 +190,9 @@ The current manually assembled environment and script-level options are difficul
 
 - [ ] Inventory imports and system dependencies, including OpenCV/GStreamer and the OpenSSL DTLS requirement.
 - [ ] Choose and document a reproducible Python dependency specification compatible with aarch64 Ubuntu and Python 3.12.
-- [ ] Define ordinary configuration for capture selection, entertainment area, detection thresholds, timings, logging, and post-stream behavior.
+- [ ] Define ordinary non-secret configuration for capture selection, detection/provider settings, timings, logging, post-stream behavior, and hue.entertainment_area = "TV area"; the area value must come from configuration and never be a hard-coded application constant.
+- [ ] Require unattended mode to resolve one configured default Entertainment area deterministically, without input() or any other prompt.
+- [ ] Preserve legacy/manual interactive area selection when practical, while treating it as an explicit compatibility mode rather than a service fallback.
 - [ ] Keep credentials in a separate protected file with restrictive permissions.
 - [ ] Preserve direct use of the existing client.json or provide an explicit, reversible migration tool.
 - [ ] Add validation with useful errors and no secret values in logs.
@@ -185,6 +201,10 @@ The current manually assembled environment and script-level options are difficul
 
 ### Acceptance criteria
 
+- [ ] The documented non-secret example includes hue.entertainment_area = "TV area" with exact capitalization.
+- [ ] Unattended configuration validation requires a non-empty default area and never prompts.
+- [ ] Offline tests cover missing configuration and legacy/manual fallback without contacting the bridge.
+- [ ] Live area existence and uniqueness validation is explicitly deferred to the approved Milestone 3 bridge test.
 - [ ] A fresh environment can be created from version-controlled instructions and dependency metadata.
 - [ ] Non-secret configuration has a documented example.
 - [ ] Secret storage is ignored, permission-checked, and compatible with current credentials.
@@ -195,6 +215,8 @@ The current manually assembled environment and script-level options are difficul
 ### Risks/unknowns
 
 - OpenCV may remain partly system-built rather than fully reproducible through Python packaging.
+- Entertainment-area names can be renamed or duplicated on the bridge; live resolution must reject zero or multiple exact matches.
+- A future stable Hue resource ID may be stored as an optional resolved value, but the configured human-readable default remains ordinary configuration.
 - Hue client key formats and file permissions must remain compatible with upstream behavior.
 - GStreamer plugin availability may vary across Ubuntu updates.
 
@@ -213,6 +235,8 @@ Separate the monolithic script into testable components while preserving the cur
 Clear ownership of resources is required to fix races, recover safely, and add automation without changing visual behavior accidentally.
 
 ### Planned work
+- [ ] Add Hue area resolution that maps the exact configured name TV area to one Entertainment configuration before any start request.
+- [ ] Keep legacy/manual interactive selection available when practical, but prohibit it in unattended mode.
 
 - [ ] Establish components for capture, Hue bridge/API control, frame/color analysis, HueStream packet construction, DTLS transport, and controller lifecycle.
 - [ ] Replace shared mutable globals with explicit state and ownership.
@@ -221,6 +245,8 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 - [ ] Make capture reset safe relative to active reads and preserve file/URL inputs.
 - [ ] Use binary-safe HueStream transport and add packet-level tests.
 - [ ] Make cleanup safe after failures at every partial startup stage.
+- [ ] Run a separately approved read-only live test confirming TV area exists and test an unknown configured name for a clear pre-stream error.
+- [ ] Run a separately approved manual start/stream/stop test scoped to TV area and verify cleanup afterward.
 - [ ] Create characterization tests for light-position mapping, RGB encoding, brightness behavior, and packet layout.
 - [ ] Run the refactored application manually against the same capture and Hue setup only under an approved test procedure.
 
@@ -230,12 +256,16 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 - [ ] Existing CLI behavior and Ambilight sampling are preserved or differences are documented and approved.
 - [ ] Packet construction is binary-safe and covered by deterministic tests.
 - [ ] Thread startup, shutdown, and capture reset no longer depend on arbitrary sleeps.
+- [ ] Unattended execution resolves TV area deterministically with no prompt.
+- [ ] Missing or ambiguous configured areas fail before streaming with an actionable message naming the configured value.
+- [ ] The approved live Hue test confirms streaming starts and stops only for the resolved TV area.
 - [ ] Manual end-to-end operation succeeds before automation begins.
 - [ ] The pre-refactor commit remains a tested rollback point.
 
 ### Risks/unknowns
 
 - Existing text-mode OpenSSL piping may conceal protocol behavior that must be characterized before replacement.
+- Renaming or duplicating TV area after configuration must produce a safe startup failure rather than an interactive prompt or arbitrary selection.
 - Correcting obvious bugs could change observable brightness or color output; compatibility comes first in this milestone.
 - Hardware-only behavior cannot be fully covered by unit tests.
 
@@ -255,9 +285,11 @@ An appliance service must survive routine errors and obey operating-system lifec
 
 ### Planned work
 
-- [ ] Remove runtime dependence on input(), screen, and interactive reset/quit commands.
+- [ ] Remove runtime dependence on input(), screen, interactive reset/quit commands, and interactive Entertainment-area selection.
 - [ ] Handle SIGTERM and SIGINT through a single idempotent shutdown path.
 - [ ] Bound network, capture, subprocess, and thread shutdown waits.
+- [ ] Revalidate the configured Entertainment area during startup and recover safely if it was renamed, removed, or became ambiguous.
+- [ ] Exercise approved live partial-startup and shutdown failures and verify Entertainment streaming is stopped afterward.
 - [ ] Clean up correctly after failures before and after Hue streaming begins.
 - [ ] Implement capture reopen with backoff and the original configured source.
 - [ ] Detect and recover failed DTLS and Hue stream sessions.
@@ -272,6 +304,8 @@ An appliance service must survive routine errors and obey operating-system lifec
 - [ ] Injected partial startup failures release every acquired resource.
 - [ ] Capture and transport failures recover or exit with an actionable status.
 - [ ] Logs identify state and failures without credential material.
+- [ ] Headless startup never waits for Entertainment-area input.
+- [ ] Live failure-injection results demonstrate cleanup of the configured TV area without leaving an active session.
 - [ ] The soak-test duration and results are recorded with a rollback commit.
 
 ### Risks/unknowns
@@ -306,6 +340,7 @@ The lifecycle must behave consistently whether desired state comes from manual l
 - [ ] Expose desired state, actual lifecycle state, transition progress, provider source, and errors.
 - [ ] Log every transition with reason and elapsed time.
 - [ ] Test state sequences with a fake clock, fake provider, and fake Hue controller.
+- [ ] Run approved live ON/OFF/STATUS cycles against the configured TV area and confirm each final state.
 - [ ] Validate repeated explicit ON/OFF cycles before enabling any automatic provider.
 - [ ] Defer Homebridge/HomeKit integration until separately authorized.
 
@@ -318,6 +353,7 @@ The lifecycle must behave consistently whether desired state comes from manual l
 - [ ] Provider loss or stale state follows a documented fail-safe policy.
 - [ ] The Harmonize controller remains alive in IDLE.
 - [ ] Failures transition predictably and never skip required cleanup.
+- [ ] Live lifecycle tests affect only the configured TV area and leave its Entertainment session stopped.
 - [ ] Homebridge is not a runtime dependency of the core daemon.
 
 ### Risks/unknowns
@@ -351,6 +387,8 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 - [ ] Define behavior when lights change externally during streaming.
 - [ ] Handle process crash, bridge loss, partial restore, and stale saved-state scenarios.
 - [ ] Ensure saved state contains no credentials and has safe lifecycle/permissions.
+- [ ] Run approved live restore and off tests only against lights in the resolved TV area.
+- [ ] Record pre-test state and verify post-test state after normal stop and injected failure.
 - [ ] Test against controlled light states with an explicit recovery procedure.
 
 ### Acceptance criteria
@@ -359,6 +397,7 @@ Automatic streaming should not leave household lighting in an unwanted state aft
 - [ ] Restore accurately handles representative on/off, brightness, and color states supported by the selected lights.
 - [ ] Partial failures are logged and retried or surfaced without infinite loops.
 - [ ] Stale state cannot unexpectedly overwrite newer household changes.
+- [ ] Live Hue integration tests prove both restore and off behavior and leave no active Entertainment session.
 - [ ] A documented manual recovery procedure exists.
 - [ ] The pre-state-management behavior remains a rollback option.
 
@@ -391,6 +430,7 @@ systemd provides lifecycle, logging, dependency ordering, and recovery needed fo
 - [ ] Use stable capture-device identification rather than assuming /dev/video0 where practical.
 - [ ] Route logs to journald and document inspection commands.
 - [ ] Define ordering against local network readiness without blocking airprint or other Docker workloads and without modifying host CUPS.
+- [ ] Configure the service with the default TV area and verify boot startup cannot enter an interactive selection path.
 - [ ] Install through a reversible procedure that backs up any replaced files.
 - [ ] Enable boot start and test clean stop, restart, failure restart, and shutdown.
 - [ ] Measure CPU, memory, and device impact in IDLE and STREAMING.
@@ -403,6 +443,7 @@ systemd provides lifecycle, logging, dependency ordering, and recovery needed fo
 - [ ] Restart policy handles failures without a tight loop.
 - [ ] journald contains useful, secret-free lifecycle logs.
 - [ ] Shutdown releases Hue and capture resources within configured timeouts.
+- [ ] Boot and restart tests deterministically resolve the configured TV area or fail clearly without prompting.
 - [ ] The airprint container remains healthy and printing matches its recorded functional baseline.
 - [ ] Docker and every other recorded existing workload match their baselines; host CUPS remains untouched.
 - [ ] Uninstall/rollback restores the exact pre-install service state.
@@ -477,6 +518,9 @@ The project is complete only when it can be maintained and recovered without rec
 - [ ] Test TV off while the source remains active.
 - [ ] Test repeated on/off cycles and brief signal interruptions.
 - [ ] Test temporary capture failure and reconnection.
+- [ ] Test exact resolution of TV area and the actionable failure for a missing or ambiguous configured area.
+- [ ] Verify every live test and service stop leaves Hue Entertainment streaming disabled.
+- [ ] Verify only the configured Entertainment area and its affected lights change during controlled tests.
 - [ ] Test temporary Hue/network failure where practical and safe.
 - [ ] Test service stop, start, restart, failure restart, SIGTERM, and shutdown.
 - [ ] Verify that the airprint container remains healthy and complete a working-print check.
@@ -494,6 +538,8 @@ The project is complete only when it can be maintained and recovered without rec
 - [ ] Airprint printing and all other Docker workloads remain functional according to recorded baselines; host CUPS remains untouched.
 - [ ] A new operator can install, configure, diagnose, update, and roll back using the documentation.
 - [ ] Credentials are absent from Git history, logs, examples, and diagnostic bundles produced by the modernization work.
+- [ ] The full Hue validation matrix passes for area resolution, streaming lifecycle, recovery, and post-Ambilight state.
+- [ ] Installation documentation explains the default area setting, exact-name matching, legacy/manual selection, and failure recovery.
 - [ ] The final release has a clear previous known-good rollback point.
 
 ### Risks/unknowns
