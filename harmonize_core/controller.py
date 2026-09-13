@@ -13,6 +13,7 @@ from .analysis import FrameAnalyzer
 from .capture import CaptureReadError, CaptureSource
 from .errors import HarmonizeError
 from .hue import EntertainmentArea, HueBridge
+from .light_state import HueLightStateManager, LightStateSnapshot
 from .observability import log_event
 from .protocol import HueStreamPacketBuilder
 from .transport import OpenSslDtlsTransport
@@ -52,6 +53,7 @@ class HarmonizeController:
         transport_reconnect_initial_seconds: float = 0.5,
         hue_status_interval_seconds: float = 10.0,
         failure_injection: str | None = None,
+        light_state_factory: Callable[[EntertainmentArea], HueLightStateManager] | None = None,
         transport_factory: Callable[..., OpenSslDtlsTransport] = OpenSslDtlsTransport,
         logger: logging.Logger | None = None,
     ):
@@ -75,6 +77,7 @@ class HarmonizeController:
         )
         self.hue_status_interval_seconds = hue_status_interval_seconds
         self.failure_injection = failure_injection
+        self.light_state_factory = light_state_factory
         self.transport_factory = transport_factory
         self._logger = logger or logging.getLogger("harmonize.controller")
 
@@ -254,6 +257,8 @@ class HarmonizeController:
     def run(self) -> None:
         stream_stop_required = False
         transport = None
+        light_state_manager = None
+        light_snapshot: LightStateSnapshot | None = None
         self._transition(LifecycleState.STARTING)
 
         def remember_cleanup_error(cleanup_error: Exception) -> None:
@@ -272,6 +277,8 @@ class HarmonizeController:
             # capture or requesting an Entertainment session.
             self.area = self.hue.resolve_name(self.area.name)
             self._validate_area(self.area)
+            if self.light_state_factory is not None:
+                light_state_manager = self.light_state_factory(self.area)
 
             self.capture.open()
             frame = self.capture.read()
@@ -279,6 +286,8 @@ class HarmonizeController:
             builder = HueStreamPacketBuilder(self.area.resource_id)
             self._inject("after_capture_ready")
 
+            if light_state_manager is not None:
+                light_snapshot = light_state_manager.capture()
             stream_stop_required = True
             self.hue.start_streaming(self.area)
             self._inject("after_hue_start")
@@ -360,10 +369,21 @@ class HarmonizeController:
             except Exception as cleanup_error:
                 remember_cleanup_error(cleanup_error)
             if stream_stop_required:
+                entertainment_stopped = False
                 try:
                     self.hue.stop_streaming(self.area)
+                    entertainment_stopped = True
                 except Exception as cleanup_error:
                     remember_cleanup_error(cleanup_error)
+                if (
+                    entertainment_stopped
+                    and light_state_manager is not None
+                    and light_snapshot is not None
+                ):
+                    try:
+                        light_state_manager.finish(light_snapshot)
+                    except Exception as cleanup_error:
+                        remember_cleanup_error(cleanup_error)
             if self.state is not LifecycleState.ERROR:
                 self._transition(LifecycleState.IDLE)
             self.ready.set()

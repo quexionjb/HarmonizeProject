@@ -23,6 +23,7 @@ class FakeHue:
     def __init__(self):
         self.actions = []
         self.fail_start = False
+        self.fail_stop = False
         self.fail_resolve = False
 
     def application_id(self):
@@ -47,6 +48,8 @@ class FakeHue:
 
     def stop_streaming(self, area):
         self.actions.append(("stop", area.name))
+        if self.fail_stop:
+            raise HarmonizeError("injected stop failure")
 
 
 class FakeCapture:
@@ -80,6 +83,23 @@ class FakeCapture:
 
     def close(self):
         self.closed = True
+
+
+class FakeLightStateManager:
+    def __init__(self, fail_finish=False):
+        self.snapshot = object()
+        self.captured = 0
+        self.finished = []
+        self.fail_finish = fail_finish
+
+    def capture(self):
+        self.captured += 1
+        return self.snapshot
+
+    def finish(self, snapshot):
+        self.finished.append(snapshot)
+        if self.fail_finish:
+            raise HarmonizeError("injected restore failure")
 
 
 class FakeTransport:
@@ -263,6 +283,63 @@ class ControllerTests(unittest.TestCase):
             ],
         )
         self.assertTrue(FakeTransport.instances[0].closed)
+
+    def test_light_state_is_captured_and_restored_around_stream(self):
+        hue = FakeHue()
+        capture = FakeCapture()
+        manager = FakeLightStateManager()
+        subject = controller(hue, capture)
+        subject.light_state_factory = lambda area: manager
+        subject.start_background()
+        self.assertTrue(subject.ready.wait(1.0))
+        subject.request_stop()
+        subject.join(1.0)
+        self.assertEqual(manager.captured, 1)
+        self.assertEqual(manager.finished, [manager.snapshot])
+        self.assertEqual(hue.actions, [("start", "TV area"), ("stop", "TV area")])
+
+    def test_uncertain_hue_stop_preserves_state_journal_without_apply(self):
+        hue = FakeHue()
+        hue.fail_stop = True
+        capture = FakeCapture()
+        manager = FakeLightStateManager()
+        subject = controller(hue, capture)
+        subject.light_state_factory = lambda area: manager
+        subject.start_background()
+        self.assertTrue(subject.ready.wait(1.0))
+        subject.request_stop()
+        subject.join(1.0)
+        self.assertEqual(subject.state, LifecycleState.ERROR)
+        self.assertEqual(manager.captured, 1)
+        self.assertEqual(manager.finished, [])
+
+    def test_restore_failure_is_reported_after_other_cleanup(self):
+        hue = FakeHue()
+        capture = FakeCapture()
+        manager = FakeLightStateManager(fail_finish=True)
+        subject = controller(hue, capture)
+        subject.light_state_factory = lambda area: manager
+        subject.start_background()
+        self.assertTrue(subject.ready.wait(1.0))
+        subject.request_stop()
+        subject.join(1.0)
+        self.assertEqual(subject.state, LifecycleState.ERROR)
+        self.assertIn("restore failure", str(subject.error))
+        self.assertTrue(capture.closed)
+        self.assertTrue(FakeTransport.instances[0].closed)
+        self.assertEqual(hue.actions[-1], ("stop", "TV area"))
+
+    def test_failure_before_hue_start_creates_no_state_journal(self):
+        hue = FakeHue()
+        capture = FakeCapture()
+        manager = FakeLightStateManager()
+        subject = controller(hue, capture)
+        subject.failure_injection = "after_capture_ready"
+        subject.light_state_factory = lambda area: manager
+        subject.run()
+        self.assertEqual(manager.captured, 0)
+        self.assertEqual(manager.finished, [])
+        self.assertEqual(hue.actions, [])
 
 
 if __name__ == "__main__":

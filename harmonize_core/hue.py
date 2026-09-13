@@ -32,6 +32,7 @@ class EntertainmentArea:
     name: str
     channels: tuple[Channel, ...]
     status: str | None = None
+    light_ids: tuple[str, ...] = ()
 
 
 def _legacy_group_id(resource: dict[str, Any]) -> str:
@@ -42,6 +43,22 @@ def _legacy_group_id(resource: dict[str, Any]) -> str:
             "has no usable legacy group ID"
         )
     return match.group(0)
+
+
+def _light_service_ids(resource: dict[str, Any]) -> tuple[str, ...]:
+    references = resource.get("light_services", [])
+    if not isinstance(references, list):
+        raise HarmonizeError("Hue returned malformed Entertainment light services")
+    result = []
+    for reference in references:
+        if not isinstance(reference, dict):
+            raise HarmonizeError("Hue returned malformed Entertainment light service")
+        if reference.get("rtype") == "light":
+            resource_id = reference.get("rid")
+            if not isinstance(resource_id, str) or not resource_id:
+                raise HarmonizeError("Hue returned an invalid Entertainment light ID")
+            result.append(resource_id)
+    return tuple(result)
 
 
 def area_from_resource(resource: dict[str, Any]) -> EntertainmentArea:
@@ -65,6 +82,7 @@ def area_from_resource(resource: dict[str, Any]) -> EntertainmentArea:
                 if resource.get("status") is not None
                 else None
             ),
+            light_ids=_light_service_ids(resource),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise HarmonizeError("Hue returned a malformed Entertainment area") from exc
@@ -183,7 +201,7 @@ class HueBridge:
         self._headers = {"hue-application-key": username}
 
     def _request(
-        self, method: str, path: str, *, json_body: dict[str, str] | None = None
+        self, method: str, path: str, *, json_body: dict[str, Any] | None = None
     ) -> requests.Response:
         try:
             response = self._session.request(
@@ -225,6 +243,36 @@ class HueBridge:
         return resolve_group_id(
             self.list_entertainment_resources(), group_id
         )
+
+    def get_light(self, resource_id: str) -> dict[str, Any]:
+        response = self._request("GET", f"/clip/v2/resource/light/{resource_id}")
+        try:
+            payload = response.json()
+            resources = payload["data"]
+            errors = payload.get("errors", [])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HarmonizeError("Hue returned malformed light data") from exc
+        if errors or not isinstance(resources, list) or len(resources) != 1:
+            raise HarmonizeError(
+                f"Hue light resource {resource_id} was not found or was ambiguous"
+            )
+        resource = resources[0]
+        if not isinstance(resource, dict) or resource.get("id") != resource_id:
+            raise HarmonizeError("Hue returned mismatched light data")
+        return resource
+
+    def update_light(self, resource_id: str, body: dict[str, Any]) -> None:
+        response = self._request(
+            "PUT", f"/clip/v2/resource/light/{resource_id}", json_body=body
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HarmonizeError("Hue returned malformed light-update data") from exc
+        if payload.get("errors"):
+            raise HarmonizeError(
+                f"Hue rejected state update for light {resource_id}"
+            )
 
     def application_id(self) -> str:
         response = self._request("GET", "/auth/v1")

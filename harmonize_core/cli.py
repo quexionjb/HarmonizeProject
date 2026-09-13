@@ -15,6 +15,7 @@ from harmonize_config import (
     ConfigError,
     ControlConfig,
     HarmonizeConfig,
+    LightStateConfig,
     ReliabilityConfig,
     load_config,
     load_credentials,
@@ -25,6 +26,7 @@ from .controller import HarmonizeController
 from .errors import HarmonizeError
 from .hue import HueBridge, discover_bridge, resolve_area_name, resolve_group_id
 from .local_control import LocalCommandProvider
+from .light_state import HueLightStateManager, LightStateJournal
 from .observability import HealthFile, configure_logging, log_event
 from .state_machine import AmbilightSupervisor
 
@@ -43,7 +45,9 @@ class RuntimeOptions:
     sample_breadth: float
     update_interval_seconds: float
     logging_level: str
+    post_stream_behavior: str
     control: ControlConfig
+    light_state: LightStateConfig
     reliability: ReliabilityConfig
 
 
@@ -136,8 +140,12 @@ def _runtime_options(
             sample_breadth=0.15,
             update_interval_seconds=0.0167,
             logging_level="DEBUG" if args.verbose else "INFO",
+            post_stream_behavior="restore",
             control=ControlConfig(
                 socket_path=Path("run/harmonize.sock").resolve()
+            ),
+            light_state=LightStateConfig(
+                journal_file=Path("run/harmonize-light-state.json").resolve()
             ),
             reliability=ReliabilityConfig(),
         )
@@ -171,7 +179,9 @@ def _runtime_options(
         sample_breadth=config.ambilight.sample_breadth,
         update_interval_seconds=config.ambilight.update_interval_seconds,
         logging_level="DEBUG" if args.verbose else config.logging.level,
+        post_stream_behavior=config.ambilight.post_stream_behavior,
         control=config.control,
+        light_state=config.light_state,
         reliability=reliability,
     )
 
@@ -245,6 +255,42 @@ def run(argv: list[str] | None = None) -> int:
 
         reliability = options.reliability
         shutdown_timeout = reliability.shutdown_timeout_seconds
+        pending_journal = LightStateJournal(options.light_state.journal_file)
+        if pending_journal.exists():
+            try:
+                pending_snapshot = pending_journal.load()
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "pending_light_state_journal",
+                    area=pending_snapshot.area_name,
+                    age_seconds=round(
+                        max(0.0, time.time() - pending_snapshot.captured_at), 3
+                    ),
+                    action=(
+                        "inspect and resolve with tools/harmonize_light_state.py "
+                        "before Ambilight ON"
+                    ),
+                )
+            except HarmonizeError as exc:
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "invalid_light_state_journal",
+                    error=str(exc),
+                    action="repair or remove the journal before Ambilight ON",
+                )
+
+        def light_state_factory(resolved_area):
+            return HueLightStateManager(
+                hue=hue,
+                area=resolved_area,
+                behavior=options.post_stream_behavior,
+                journal=LightStateJournal(options.light_state.journal_file),
+                stale_after_seconds=options.light_state.stale_after_seconds,
+                restore_attempts=options.light_state.restore_attempts,
+                retry_seconds=options.light_state.retry_seconds,
+            )
 
         def controller_factory() -> HarmonizeController:
             capture = CaptureSource(
@@ -281,6 +327,7 @@ def run(argv: list[str] | None = None) -> int:
                     reliability.hue_status_interval_seconds
                 ),
                 failure_injection=args.inject_failure,
+                light_state_factory=light_state_factory,
             )
 
         supervisor_box: dict[str, AmbilightSupervisor] = {}

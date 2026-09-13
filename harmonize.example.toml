@@ -34,6 +34,12 @@ post_stream_behavior = "restore"
 [logging]
 level = "INFO"
 
+[light_state]
+journal_file = "run/harmonize-light-state.json"
+stale_after_seconds = 300.0
+restore_attempts = 3
+retry_seconds = 0.5
+
 [reliability]
 startup_timeout_seconds = 10.0
 shutdown_timeout_seconds = 15.0

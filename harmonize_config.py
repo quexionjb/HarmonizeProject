@@ -61,6 +61,14 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class LightStateConfig:
+    journal_file: Path = Path("run/harmonize-light-state.json")
+    stale_after_seconds: float = 300.0
+    restore_attempts: int = 3
+    retry_seconds: float = 0.5
+
+
+@dataclass(frozen=True)
 class ReliabilityConfig:
     startup_timeout_seconds: float = 10.0
     shutdown_timeout_seconds: float = 15.0
@@ -81,6 +89,7 @@ class HarmonizeConfig:
     control: ControlConfig
     ambilight: AmbilightConfig
     logging: LoggingConfig
+    light_state: LightStateConfig
     reliability: ReliabilityConfig
     source_file: Path
 
@@ -98,6 +107,7 @@ _SECTIONS = {
     "control",
     "ambilight",
     "logging",
+    "light_state",
     "reliability",
 }
 _KEYS = {
@@ -122,6 +132,12 @@ _KEYS = {
         "post_stream_behavior",
     },
     "logging": {"level"},
+    "light_state": {
+        "journal_file",
+        "stale_after_seconds",
+        "restore_attempts",
+        "retry_seconds",
+    },
     "reliability": {
         "startup_timeout_seconds",
         "shutdown_timeout_seconds",
@@ -238,6 +254,7 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
     control_values = _table(document, "control")
     ambilight_values = _table(document, "ambilight")
     logging_values = _table(document, "logging")
+    light_state_values = _table(document, "light_state")
     reliability_values = _table(document, "reliability")
 
     area = _string(hue_values, "entertainment_area", optional=True)
@@ -289,6 +306,17 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
         raise ConfigError(
             "logging.level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
         )
+
+    journal_name = _string(
+        light_state_values,
+        "journal_file",
+        default="run/harmonize-light-state.json",
+    )
+    assert journal_name is not None
+    journal_file = Path(journal_name).expanduser()
+    if not journal_file.is_absolute():
+        journal_file = source.parent / journal_file
+    journal_file = journal_file.resolve()
 
     health_file_name = _string(
         reliability_values, "health_file", optional=True
@@ -394,6 +422,28 @@ def load_config(path: str | Path, *, unattended: bool) -> HarmonizeConfig:
             post_stream_behavior=post_behavior,
         ),
         logging=LoggingConfig(level=log_level),
+        light_state=LightStateConfig(
+            journal_file=journal_file,
+            stale_after_seconds=_number(
+                light_state_values,
+                "stale_after_seconds",
+                300.0,
+                minimum=1.0,
+            ),
+            restore_attempts=_integer(
+                light_state_values,
+                "restore_attempts",
+                3,
+                minimum=1,
+                maximum=20,
+            ),
+            retry_seconds=_number(
+                light_state_values,
+                "retry_seconds",
+                0.5,
+                minimum=0.01,
+            ),
+        ),
         reliability=ReliabilityConfig(
             startup_timeout_seconds=_number(
                 reliability_values,

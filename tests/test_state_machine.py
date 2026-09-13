@@ -217,6 +217,34 @@ class SupervisorTests(unittest.TestCase):
                 subject._reconcile()
                 self.assertEqual(subject.state, SupervisorState.IDLE)
 
+    def test_cleanup_error_remains_visible_until_new_off_command(self):
+        clock = FakeClock()
+        controller = FakeHueController()
+
+        def failed_stop(reason):
+            controller.events.append(("stop", reason))
+            controller.error = HarmonizeError("restore failed")
+            controller.state = LifecycleState.ERROR
+            controller.finished.set()
+
+        controller.request_stop = failed_stop
+        subject = self.subject(clock, lambda: controller, retries=0)
+        policy = ProviderPolicy(priority=100, automatic=False)
+        subject.publish(DesiredState(True, "local", clock()), policy)
+        self.reconcile_twice(subject)
+        clock.advance(1)
+        subject.publish(DesiredState(False, "local", clock()), policy)
+        subject._reconcile()
+        self.assertEqual(subject.state, SupervisorState.ERROR)
+        self.assertEqual(subject.error, "restore failed")
+        subject._reconcile()
+        self.assertEqual(subject.state, SupervisorState.ERROR)
+        clock.advance(1)
+        subject.publish(DesiredState(False, "local", clock()), policy)
+        subject._reconcile()
+        self.assertEqual(subject.state, SupervisorState.IDLE)
+        self.assertIsNone(subject.error)
+
     def test_controller_factory_failure_uses_bounded_recovery_policy(self):
         clock = FakeClock()
         calls = []

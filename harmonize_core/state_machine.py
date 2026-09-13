@@ -293,6 +293,7 @@ class AmbilightSupervisor:
         self._controller_started_at = None
         if controller.error is not None:
             self.error = str(controller.error)
+            self._transition(SupervisorState.ERROR, self.error)
             return False
         self.error = None
         self._transition(SupervisorState.IDLE, "cleanup complete")
@@ -316,6 +317,7 @@ class AmbilightSupervisor:
     def _reconcile(self) -> None:
         generation = self.arbiter.generation
         desired = self.arbiter.resolve()
+        generation_changed = generation != self._last_generation
         if (
             desired.enabled != self.desired.enabled
             or desired.source != self.desired.source
@@ -343,9 +345,11 @@ class AmbilightSupervisor:
             self._recovery_count = 0
             if controller is not None:
                 self._stop_controller(f'{desired.source} requested OFF')
+            elif self.state is SupervisorState.ERROR and not generation_changed:
+                return
             elif self.state is not SupervisorState.IDLE:
                 self.error = None
-                self._transition(SupervisorState.IDLE, "fail-safe disabled")
+                self._transition(SupervisorState.IDLE, "disabled state acknowledged")
             return
 
         if controller is None:

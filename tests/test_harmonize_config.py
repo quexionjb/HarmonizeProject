@@ -30,6 +30,11 @@ class ConfigTests(unittest.TestCase):
             (example.parent / "run/harmonize.sock").resolve(),
         )
         self.assertEqual(config.control.recovery_attempts, 3)
+        self.assertEqual(
+            config.light_state.journal_file,
+            (example.parent / "run/harmonize-light-state.json").resolve(),
+        )
+        self.assertEqual(config.light_state.restore_attempts, 3)
         self.assertEqual(config.reliability.shutdown_timeout_seconds, 15.0)
         self.assertEqual(
             config.reliability.health_file,
@@ -102,6 +107,14 @@ class ConfigTests(unittest.TestCase):
             'capture_reconnect_max_seconds = 1.0\n'
         )
         with self.assertRaisesRegex(ConfigError, "must be >="):
+            load_config(path, unattended=True)
+
+    def test_light_state_policy_values_are_validated(self):
+        path = self.write_config(
+            '[hue]\nentertainment_area = "TV area"\n'
+            '[light_state]\nrestore_attempts = 0\n'
+        )
+        with self.assertRaisesRegex(ConfigError, "restore_attempts"):
             load_config(path, unattended=True)
 
     def test_control_policy_values_are_validated(self):
