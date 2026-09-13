@@ -147,38 +147,41 @@ sudo ./setup.sh
 
 **First-Time Run Instructions:**
 
-* If you have not set up a bridge before, the program will attempt to register you on the bridge. You will have 60 seconds to push the button on the bridge.
-* If multiple bridges and/or entertainment areas are found, you will be given the option to select one or use the command line arguments.
+* Register with the Hue bridge before unattended startup so client.json contains
+  a username and client key, then restrict it with chmod 600.
+* Copy harmonize.example.toml to harmonize.toml and set the exact default
+  Entertainment area. Headless startup does not prompt for bridge or area
+  selection.
 
 # Usage
 
-**To start the program:**
+Validate configuration and credentials offline:
 
-* `screen`
-* `cd HarmonizeProject`
-* `source ~/harmonize_env/bin/activate`
-* `./harmonize.py` (ex. maximum brightness and auto-restart after 8 seconds of missed frames) `./harmonize.py -l 0 -a 8`
-* Type Ctrl+A and Ctrl-D to continue running the script in the background.
-* To resume the terminal session use `screen -r`
-* Press *r* then *ENTER* to reset the video capture stream.
-* Press *q* then *ENTER* to safely stop the program.
+    /home/pi/harmonize_env/bin/python tools/validate_config.py \
+      --config harmonize.toml \
+      --mode unattended \
+      --check-credentials
+
+Start the headless foreground runtime:
+
+    /home/pi/harmonize_env/bin/python harmonize.py \
+      --config harmonize.toml
+
+The process runs without terminal input. SIGTERM and SIGINT perform bounded
+capture, DTLS, and Hue cleanup. The example configuration writes an atomic
+non-secret health snapshot to run/harmonize-health.json. A systemd service unit
+is planned for a later milestone.
 
 **Command line arguments:**
 
-* `-v `             Display verbose output
-* `-g # `           Use specific Entertainment area group number (#)
-* `-b <id>`         Use specified bridge ID
-* `-i <ip>`         Use specified bridge IP address
-* `-s `             Enable latency optimization for single light source centered behind display
-* `-w #`            Sets the video device wait time to the specified value, in seconds. Defaults to 0.75.
-* `-f <file/url>`   Use the specified file or URL video stream instead of a video device.
-* `-l [0-255]`      Decrease brightness from 0 to 255 (0 is maximum brightness, default is 30).
+* --config selects the TOML configuration.
+* --check-area performs read-only exact-area validation and exits.
+* --run-seconds bounds a diagnostic or soak run and then uses normal cleanup.
+* --health-file overrides the configured health snapshot path.
+* -v, -g, -b, -i, -s, -w, -f, -l, and -a remain accepted for compatibility.
 
-**Configurable values within the script:** (Advanced users only)
-
-* Line 293 - `breadth` - determines the % from the edges of the screen to use in calculations. Default is 15%. Lower values can result in less lag time, but less color accuracy.
-* Line 380 - `time.sleep(0.015)` - Determines how frequently messages are sent to the bridge. Keep in mind the rest of the function takes some time to run in addition to this sleep command. Bridge requests are capped by Philips at a rate of 60/s (1 per ~16.6ms) and the excess are dropped.
-* Utilize the `nice` command to give Harmonize higher priority over other CPU tasks.
+See docs/milestone-4-headless-reliability.md for recovery policy, health fields,
+failure diagnostics, validation evidence, and rollback.
 
 # Troubleshooting
 

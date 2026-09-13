@@ -217,7 +217,7 @@ The current manually assembled environment and script-level options are difficul
 - OpenCV 4.10.0 is a documented system boundary because the accepted local build supplies required GStreamer support; a generic wheel is not an equivalent replacement.
 - Entertainment-area names can be renamed or duplicated on the bridge; live resolution must reject zero or multiple exact matches.
 - A future stable Hue resource ID may be stored as an optional resolved value, but the configured human-readable default remains ordinary configuration.
-- The existing compatible client.json is mode 0664. Manual validation warns and continues; unattended validation requires the owner to apply the documented chmod 600 correction. Milestone 2 did not alter the file.
+- During Milestone 2 the compatible client.json was mode 0664, so unattended validation correctly required the documented chmod 600 correction. The owner applied that correction after accepting the milestone; Milestone 4 validation confirmed mode 0600.
 - GStreamer plugin availability may vary across Ubuntu updates.
 
 ### Status
@@ -257,7 +257,7 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 ### Acceptance criteria
 
 - [x] Each named component has a narrow interface and clear resource ownership.
-- [ ] Existing CLI behavior and Ambilight sampling are preserved or differences are documented and approved. Sampling is characterized; documented CLI differences await milestone review.
+- [x] Existing CLI behavior and Ambilight sampling are preserved or differences are documented and approved. Milestone 3 was accepted with its documented setup-path differences.
 - [x] Packet construction is binary-safe and covered by deterministic tests.
 - [x] Thread startup and capture reset no longer depend on arbitrary sleeps; bounded shutdown work remains Milestone 4.
 - [x] Unattended area-check execution resolves TV area deterministically with no prompt.
@@ -275,13 +275,13 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 
 ### Status
 
-Implementation complete on branch m3-refactor. The component refactor, 41
+Accepted and integrated into modernize at b4474c2. The component refactor, 41
 offline tests, read-only exact/unknown Hue validation, unattended area check,
 and combined capture/analysis/unsent-packet preflight pass. The approved active
 test confirmed "TV area" changed from inactive to active during the binary
 stream, one q stopped the refactored application with exit status zero, and an
-immediate read-only query confirmed inactive cleanup. The documented CLI setup
-differences await milestone acceptance. Stop for review before Milestone 4.
+immediate read-only query confirmed inactive cleanup. The user also confirmed
+the lights visually followed the video correctly.
 
 ## Milestone 4 — Headless Lifecycle and Reliability
 
@@ -295,38 +295,44 @@ An appliance service must survive routine errors and obey operating-system lifec
 
 ### Planned work
 
-- [ ] Remove runtime dependence on input(), screen, interactive reset/quit commands, and interactive Entertainment-area selection.
-- [ ] Handle SIGTERM and SIGINT through a single idempotent shutdown path.
-- [ ] Bound network, capture, subprocess, and thread shutdown waits.
-- [ ] Revalidate the configured Entertainment area during startup and recover safely if it was renamed, removed, or became ambiguous.
-- [ ] Exercise approved live partial-startup and shutdown failures and verify Entertainment streaming is stopped afterward.
-- [ ] Clean up correctly after failures before and after Hue streaming begins.
-- [ ] Implement capture reopen with backoff and the original configured source.
-- [ ] Detect and recover failed DTLS and Hue stream sessions.
-- [ ] Add structured, severity-based, journald-friendly logging with secret redaction.
-- [ ] Define health and liveness indicators usable by systemd and diagnostics.
-- [ ] Run an extended manual soak test before adding automatic source control.
+- [x] Remove runtime dependence on input(), screen, interactive reset/quit commands, and interactive Entertainment-area selection.
+- [x] Handle SIGTERM and SIGINT through a single idempotent shutdown path.
+- [x] Bound network, capture, subprocess, and thread shutdown waits.
+- [x] Revalidate the configured Entertainment area during startup and recover safely if it was renamed, removed, or became ambiguous.
+- [x] Exercise approved live partial-startup and shutdown failures and verify Entertainment streaming is stopped afterward.
+- [x] Clean up correctly after failures before and after Hue streaming begins.
+- [x] Implement capture reopen with backoff and the original configured source.
+- [x] Detect and recover failed DTLS and Hue stream sessions.
+- [x] Add structured, severity-based, journald-friendly logging with secret redaction.
+- [x] Define health and liveness indicators usable by systemd and diagnostics.
+- [x] Run an extended manual soak test before adding automatic source control.
 
 ### Acceptance criteria
 
-- [ ] The application starts and stops without a terminal.
-- [ ] SIGTERM and SIGINT produce clean, bounded shutdown.
-- [ ] Injected partial startup failures release every acquired resource.
-- [ ] Capture and transport failures recover or exit with an actionable status.
-- [ ] Logs identify state and failures without credential material.
-- [ ] Headless startup never waits for Entertainment-area input.
-- [ ] Live failure-injection results demonstrate cleanup of the configured TV area without leaving an active session.
-- [ ] The soak-test duration and results are recorded with a rollback commit.
+- [x] The application starts and stops without a terminal.
+- [x] SIGTERM and SIGINT produce clean, bounded shutdown.
+- [x] Injected partial startup failures release every acquired resource.
+- [x] Capture and transport failures recover or exit with an actionable status.
+- [x] Logs identify state and failures without credential material.
+- [x] Headless startup never waits for Entertainment-area input.
+- [x] Live failure-injection results demonstrate cleanup of the configured TV area without leaving an active session.
+- [x] The 301.846-second soak-test result and pre-milestone rollback commit are recorded.
 
 ### Risks/unknowns
 
-- Hue API operations can hang or fail independently of DTLS.
-- Capture reopening may require device re-enumeration rather than a simple OpenCV reopen.
-- Aggressive restart behavior could contend with hardware or the bridge.
+- Hue API operations are bounded at five seconds but can still fail independently of DTLS; exhausted recovery exits and performs scoped cleanup.
+- Capture reopen with backoff is covered with injected failures. Physical USB re-enumeration was not forced because it could disrupt the appliance; a device that disappears permanently produces continuing degraded health until shutdown.
+- DTLS recovery deliberately cycles the owned Entertainment session to clear stale bridge state, causing a brief visible interruption.
+- The live GStreamer backend warns that video position and buffer-size properties are unsupported, but sustained capture remained healthy.
 
 ### Status
 
-Not started.
+Complete on branch m4-headless-reliability. Fifty-one offline tests, three live
+partial-startup failures, real SIGTERM and SIGINT shutdown, live DTLS and Hue
+session recovery, structured health/log validation, and a 301.846-second
+headless soak pass. Every active test finished with the exact "TV area"
+inactive and no lingering Harmonize or OpenSSL process. Stop for review before
+Milestone 5.
 
 ## Milestone 5 — Automatic Ambilight State Machine
 
