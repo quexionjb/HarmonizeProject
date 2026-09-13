@@ -86,18 +86,25 @@ On 2026-09-13:
 Expected OpenCV GStreamer warnings reported that video position and buffer-size
 properties are unsupported by this live source. Frame capture itself succeeded.
 
-## Active validation still required
+## Active validation completed
 
-No Hue Entertainment start/stop action or DTLS packet has been sent by the
-Milestone 3 branch yet. The first active test requires operator confirmation.
-It will run the refactored CLI against the configured TV area and current
-capture, observe streaming briefly, enter q, and confirm that the cleanup stop
-request succeeded.
+After explicit operator approval on 2026-09-13, the refactored CLI started the
+configured TV area using the current capture. The OpenSSL handshake reached
+observable readiness, and a concurrent read-only bridge query reported
+Entertainment status active. The first run exposed an input-loop race in which
+q requested shutdown correctly but the CLI displayed another prompt before the
+worker finished. Cleanup still succeeded and the bridge reported inactive.
+
+The prompt race was corrected and the 41-test offline suite passed. The same
+approved active test was repeated. The bridge again reported active during the
+binary stream; one q exited with status zero; and the immediate read-only query
+reported inactive. No fallback stop request was needed. Only the exactly
+resolved two-channel TV area was passed to the start, packet, and stop paths.
 
 Milestone 3 does not implement exact pre-stream light-state restoration; that is
-Milestone 6. The stop action releases Entertainment control, but the test must
-assume the lights can remain at their final streamed color. The operator can
-restore the desired scene from the Hue app after cleanup.
+Milestone 6. The stop action released Entertainment control. The physical light
+appearance cannot be measured from the Pi, and lights can retain their final
+streamed color until the operator selects another Hue scene.
 
 ## Rollback
 

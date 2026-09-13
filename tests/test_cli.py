@@ -42,6 +42,10 @@ class CliTests(unittest.TestCase):
         self.assertTrue(args.unattended)
         self.assertTrue(args.check_area)
 
+    def test_default_config_startup_wait_is_positive(self):
+        args = build_parser().parse_args(["--config", "harmonize.example.toml"])
+        self.assertIsNone(args.video_wait_time)
+
 
 if __name__ == "__main__":
     unittest.main()

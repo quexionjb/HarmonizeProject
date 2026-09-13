@@ -194,7 +194,17 @@ def run(argv: list[str] | None = None) -> int:
             auto_restart_seconds=options.auto_restart_seconds,
         )
         controller.start_background()
-        controller.ready.wait(max(0.1, options.startup_wait_seconds))
+        if not controller.ready.wait(max(0.1, options.startup_wait_seconds)):
+            controller.request_stop()
+            controller.join()
+            raise HarmonizeError(
+                "Controller did not become ready within "
+                f"{options.startup_wait_seconds:g} seconds"
+            )
+        if controller.error is not None:
+            controller.join()
+            raise HarmonizeError(str(controller.error))
+        print("Hue Entertainment streaming is ready.")
         while not controller.finished.is_set():
             command = input(
                 "Please r to reset the video capture, q to stop streaming, "
@@ -204,6 +214,8 @@ def run(argv: list[str] | None = None) -> int:
                 controller.request_capture_reset()
             elif command == "q":
                 controller.request_stop()
+                controller.join()
+                break
         controller.join()
         if controller.error is not None:
             raise HarmonizeError(str(controller.error))

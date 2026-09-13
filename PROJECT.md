@@ -250,9 +250,9 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 - [x] Use binary-safe HueStream transport and add packet-level tests.
 - [x] Make cleanup safe after failures at every partial startup stage covered offline.
 - [x] Run a separately approved read-only live test confirming TV area exists and test an unknown configured name for a clear pre-stream error.
-- [ ] Run a separately approved manual start/stream/stop test scoped to TV area and verify cleanup afterward.
+- [x] Run a separately approved manual start/stream/stop test scoped to TV area and verify cleanup afterward.
 - [x] Create characterization tests for light-position mapping, RGB encoding, brightness behavior, and packet layout.
-- [ ] Run the refactored application manually against the same capture and Hue setup only under an approved test procedure.
+- [x] Run the refactored application manually against the same capture and Hue setup only under an approved test procedure.
 
 ### Acceptance criteria
 
@@ -262,8 +262,8 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 - [x] Thread startup and capture reset no longer depend on arbitrary sleeps; bounded shutdown work remains Milestone 4.
 - [x] Unattended area-check execution resolves TV area deterministically with no prompt.
 - [x] Missing or ambiguous configured areas fail before streaming with an actionable message naming the configured value.
-- [ ] The approved live Hue test confirms streaming starts and stops only for the resolved TV area.
-- [ ] Manual end-to-end operation succeeds before automation begins.
+- [x] The approved live Hue test confirms streaming starts and stops only for the resolved TV area.
+- [x] Manual end-to-end operation succeeds before automation begins.
 - [x] The pre-refactor commit ee4bbc0 remains a tested rollback point.
 
 ### Risks/unknowns
@@ -275,12 +275,13 @@ Clear ownership of resources is required to fix races, recover safely, and add a
 
 ### Status
 
-In progress on branch m3-refactor. The component refactor, 40 offline tests,
-read-only exact/unknown Hue validation, unattended area check, and combined
-capture/analysis/unsent-packet preflight are complete. The live bridge contains
-one exact "TV area" with two channels. No Entertainment start action or DTLS
-packet has been sent. Work is stopped at the required approval boundary before
-the first active-light test. Do not begin Milestone 4.
+Implementation complete on branch m3-refactor. The component refactor, 41
+offline tests, read-only exact/unknown Hue validation, unattended area check,
+and combined capture/analysis/unsent-packet preflight pass. The approved active
+test confirmed "TV area" changed from inactive to active during the binary
+stream, one q stopped the refactored application with exit status zero, and an
+immediate read-only query confirmed inactive cleanup. The documented CLI setup
+differences await milestone acceptance. Stop for review before Milestone 4.
 
 ## Milestone 4 — Headless Lifecycle and Reliability
 
