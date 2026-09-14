@@ -495,50 +495,65 @@ acceptance. A complete reboot exercise remains in final validation. Docker,
 AirPrint, and host CUPS were explicitly out of scope and were not inspected.
 Detailed evidence is in `docs/milestone-7-systemd.md`.
 
-## Milestone 8 — Homebridge Control Adapter
+## Milestone 8 — Trusted-LAN HTTP Control
 
 ### Objective
 
-Provide the smallest reliable interface needed for a Homebridge dummy switch to control Harmonize through its existing desired-state boundary.
+Provide a deliberately small HTTP interface on TCP port 8765 that maps three
+fixed trusted-LAN requests to Harmonize's existing desired-state boundary.
 
 ### Why it matters
 
-Homebridge already exports the owner's dummy switch to HomeKit. A narrow local adapter can connect that switch to Harmonize without coupling the core service to Homebridge or HomeKit and without exposing a network API.
+Simple LAN clients need a stable way to request ON, OFF, and current status
+without gaining direct access to Harmonize's private Unix socket or credentials.
 
 ### Planned work
 
-- [ ] Confirm the Homebridge service identity and the dummy switch's supported local command hooks without changing its HomeKit configuration.
-- [ ] Add a small local adapter, preferably a `harmonizectl` command, that maps explicit ON, OFF, and optionally STATUS operations to the existing owner-only Unix socket.
-- [ ] Keep the Unix-socket desired-state provider as the sole Harmonize control boundary; do not add Homebridge- or HomeKit-specific logic to Harmonize.
-- [ ] Define stable command exit codes, bounded timeouts, actionable errors, and a simple machine-readable status result if Homebridge can usefully consume it.
-- [ ] Grant the Homebridge runtime only the minimum permission needed to invoke the fixed control adapter, without granting Hue credential, general shell, service-management, or broader Harmonize account access.
-- [ ] Preserve explicit-stop semantics: dummy-switch OFF must reach Harmonize OFF and leave every light in `TV area` powered off.
-- [ ] Add offline tests for command mapping, status, permission assumptions, unavailable service/socket behavior, invalid input, and timeout/failure reporting.
-- [ ] Document Homebridge dummy-switch ON/OFF command setup, optional status integration, diagnostics, permission removal, and full rollback.
-- [ ] Perform controlled live validation by toggling the existing Homebridge dummy switch ON and OFF and observing actual Ambilight and light-off behavior.
-- [ ] Keep HomeKit integration itself, Docker, AirPrint, and host CUPS outside this milestone; do not routinely inspect them.
+- [x] Listen on TCP port 8765 and accept only exact GET requests for
+  `/?harmonize=on`, `/?harmonize=off`, and `/?harmonize=status`.
+- [x] Map fixed request values directly to the existing owner-only Unix socket;
+  never construct or execute shell commands from request input.
+- [x] Return concise results and explicit HTTP errors for invalid input,
+  unavailable local control, and invalid daemon responses.
+- [x] Run under a least-privilege systemd boundary without exposing Hue
+  credentials or the persistent light-state journal.
+- [x] Preserve explicit OFF semantics: every light in `TV area` must be off.
+- [x] Add offline tests for exact command mapping, status, invalid input,
+  unavailable service/socket behavior, and deployment boundaries.
+- [x] Document setup, diagnostics, trusted-LAN exposure, and full rollback.
+- [x] Perform controlled live HTTP validation of STATUS, ON, and OFF.
+- [x] Keep unrelated services and Milestone 9 outside this milestone.
 
 ### Acceptance criteria
 
-- [ ] Dummy-switch ON causes Harmonize to reach STREAMING and the configured `TV area` lights visibly follow captured video.
-- [ ] Dummy-switch OFF causes Harmonize to reach IDLE and every configured-area light remains powered off.
-- [ ] Homebridge can obtain accurate Harmonize status through the adapter if status feedback is supported and useful for the chosen dummy-switch mechanism.
-- [ ] Harmonize remains provider-neutral and exposes no new network listener or HomeKit-specific code.
-- [ ] Homebridge receives no permission beyond invoking the narrow fixed control interface.
-- [ ] Adapter failures and an unavailable Harmonize service are bounded, visible, and do not leave a stuck Entertainment session.
-- [ ] Setup and rollback can be completed from the documentation, including removal of any Homebridge permission grant.
-- [ ] Offline and live results are recorded, Entertainment finishes inactive, and only `TV area` is affected.
+- [x] HTTP ON causes Harmonize to reach STREAMING and the configured `TV area` lights visibly follow captured video.
+- [x] HTTP OFF causes Harmonize to reach IDLE and every configured-area light remains powered off.
+- [x] HTTP STATUS accurately reports the current Harmonize supervisor state.
+- [x] Missing, unsupported, duplicate, or extra input cannot invoke a command.
+- [x] The interface listens on TCP port 8765 without authentication, as an
+  explicitly trusted-LAN service.
+- [x] Request input is never passed to a shell, and the adapter cannot access
+  Harmonize credentials or persistent state.
+- [x] Adapter failures and an unavailable Harmonize service are bounded, visible, and do not leave a stuck Entertainment session.
+- [x] Setup and rollback can be completed from the documentation.
+- [x] Offline and live results are recorded, Entertainment finishes inactive, and only `TV area` is affected.
 
 ### Risks/unknowns
 
-- The installed Homebridge dummy-switch plugin may differ in how it invokes local commands or reports state; inspect its supported hooks before choosing adapter output semantics.
-- A direct Unix-socket group grant may expose more filesystem access than a tightly constrained adapter, while a sudo rule must be root-owned and argument-safe.
-- Homebridge and Harmonize can disagree after either service restarts unless status is queried or the switch behavior is explicitly documented as command-only.
-- Command retries must not turn transient errors into repeated or stale desired-state changes.
+- The interface is intentionally unauthenticated, so host and network policy
+  must keep port 8765 limited to the trusted LAN.
+- ON and OFF acknowledge socket acceptance rather than waiting for lifecycle
+  completion; clients should query STATUS when they need resulting state.
+- A Harmonize restart temporarily removes its Unix socket; the adapter must
+  report that condition without retrying or changing desired state.
 
 ### Status
 
-Not started. Do not implement until Milestone 8 is explicitly authorized.
+Complete and accepted on `m8-http-interface` on 2026-09-13. The HTTP adapter
+is installed, enabled, and live-validated on TCP port 8765. The working
+external control interface is `/?harmonize=on`, `/?harmonize=off`, and
+`/?harmonize=status`. Both services are active and running; final state is
+IDLE with the exact two-channel `TV area` reporting Entertainment inactive.
 
 ## Milestone 9 — Ambilight Quality Improvements
 
