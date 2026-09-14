@@ -1,3 +1,5 @@
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +11,59 @@ UNINSTALL = ROOT / "deploy/uninstall-http.sh"
 
 
 class HTTPDeploymentTests(unittest.TestCase):
+    def assert_destination_safety(self, source, destination, expected_safe):
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1"; destination_is_safe "$2" "$3"',
+                "bash",
+                str(INSTALL),
+                str(source),
+                str(destination),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode == 0, expected_safe, result.stderr)
+
+    def test_install_guard_accepts_absent_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.write_bytes(b"release content\n")
+            self.assert_destination_safety(source, root / "destination", True)
+
+    def test_install_guard_accepts_identical_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            destination = root / "destination"
+            source.write_bytes(b"release content\n")
+            destination.write_bytes(source.read_bytes())
+            self.assert_destination_safety(source, destination, True)
+
+    def test_install_guard_rejects_different_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            destination = root / "destination"
+            source.write_bytes(b"release content\n")
+            destination.write_bytes(b"locally modified content\n")
+            self.assert_destination_safety(source, destination, False)
+
+    def test_install_guard_rejects_identical_symlink_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            target = root / "target"
+            destination = root / "destination"
+            source.write_bytes(b"release content\n")
+            target.write_bytes(source.read_bytes())
+            destination.symlink_to(target)
+            self.assert_destination_safety(source, destination, False)
+
     def test_unit_uses_fixed_port_identity_and_socket(self):
         text = UNIT.read_text()
         required = (

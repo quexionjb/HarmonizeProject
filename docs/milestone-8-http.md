@@ -36,6 +36,11 @@ root:
 sudo ./deploy/install-http.sh
 ```
 
+The guarded installer accepts files already present when they are
+byte-identical to this repository revision, including the adapter and this
+document copied by a fresh core installation. It refuses to overwrite any
+differing file, and repeated installation from the same revision is safe.
+
 Check it locally without changing desired state:
 
 ```console
@@ -64,7 +69,8 @@ state, or account.
 
 Milestone 8 validation on 2026-09-13 produced these results:
 
-- 11 focused offline HTTP and deployment tests passed. They cover exact target
+- 15 focused offline HTTP and deployment tests passed. They cover installer
+  handling of absent, identical, differing, and symlink destinations; exact target
   mapping, real loopback HTTP requests through a temporary Unix-socket
   provider, concise status, GET-only behavior, rejection of unsupported or
   extra input, unavailable/rejected/invalid daemon responses, unit hardening,

@@ -478,25 +478,18 @@ again or the machine reboots.
 
 ### Install harmonize-http.service
 
-On a fresh checkout, the core snapshot has already copied the HTTP adapter and
-its documentation into /opt/harmonize/app. The separately guarded HTTP
-installer was designed for the staged upgrade and refuses to overwrite those
-two files. Verify that each installed file is byte-identical, remove only those
-two staged copies, then run the installer so it can install and own its complete
-rollback set:
+After the core service is installed, install the HTTP layer directly from the
+same repository checkout:
 
 ~~~console
-cmp tools/harmonize_http.py /opt/harmonize/app/tools/harmonize_http.py
-cmp docs/milestone-8-http.md /opt/harmonize/app/docs/milestone-8-http.md
-sudo rm /opt/harmonize/app/tools/harmonize_http.py \
-  /opt/harmonize/app/docs/milestone-8-http.md
 sudo ./deploy/install-http.sh
 ~~~
 
-Do not remove the files if either cmp reports a difference; inspect the
-installation instead. The HTTP installer adds and enables
-harmonize-http.service, listens on all IPv4 interfaces on TCP 8765, and uses
-the existing owner-only Unix socket. It does not receive access to the Hue
+The guarded installer accepts the byte-identical HTTP files copied by the core
+installer, so this command is safe to repeat from the same revision. It still
+refuses to overwrite any differing file. The HTTP installer adds and enables
+harmonize-http.service, listens on all IPv4 interfaces on TCP 8765, and uses the
+existing owner-only Unix socket. It does not receive access to the Hue
 credential or persistent light-state directory.
 
 ## Operate Harmonize

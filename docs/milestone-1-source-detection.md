@@ -7,11 +7,12 @@ This milestone observes the USB capture path and local HDMI-CEC availability. It
 ## Capture hardware inventory
 
 - Capture device: MacroSilicon WARRKY USB 3.0
-- USB identity: vendor 345f, model 2130, serial 62196249
+- USB identity: vendor 345f, model 2130
 - Driver: uvcvideo
 - Primary capture node: /dev/video0
 - Companion node: /dev/video1
-- Stable primary path: /dev/v4l/by-id/usb-MACROSILICON_WARRKY_USB_3.0_62196249-video-index0
+- Stable primary path:
+  `/dev/v4l/by-id/usb-MACROSILICON_WARRKY_USB_3.0_<CAPTURE_SERIAL>-video-index0`
 - Harmonize-compatible access: OpenCV device index 0 with the GStreamer backend
 - The stable by-id path does not open through OpenCV's automatic GStreamer pipeline on this installation. Stable selection will need either index resolution before opening or an explicit pipeline.
 - User pi belongs to the video group.
