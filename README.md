@@ -237,11 +237,11 @@ preview. The probe saves no frames.
 
 ### 3. Clone this continuation
 
-Until this release candidate is merged separately, install from modernize:
+Install from master:
 
 ~~~console
 cd /home/pi
-git clone --branch modernize https://github.com/quexionjb/HarmonizeProject.git
+git clone --branch master https://github.com/quexionjb/HarmonizeProject.git
 cd /home/pi/HarmonizeProject
 ~~~
 
