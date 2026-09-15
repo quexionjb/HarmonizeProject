@@ -4,7 +4,11 @@ import unittest
 
 import numpy as np
 
-from harmonize_core.controller import HarmonizeController, LifecycleState
+from harmonize_core.controller import (
+    HarmonizeController,
+    LifecycleState,
+    _StreamMetrics,
+)
 from harmonize_core.errors import HarmonizeError
 from harmonize_core.hue import Channel, EntertainmentArea
 
@@ -179,6 +183,33 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(snapshot["state"], "IDLE")
         self.assertFalse(snapshot["alive"])
         self.assertFalse(snapshot["ready"])
+
+    def test_stream_metrics_summarize_without_changing_stream_values(self):
+        metrics = _StreamMetrics(0.05, 10.0)
+        metrics.record(
+            captured_at=10.010,
+            analysis_started_at=10.012,
+            analysis_duration=0.003,
+            packet_at=10.016,
+            replaced_frames=2,
+        )
+        metrics.record(
+            captured_at=10.060,
+            analysis_started_at=10.064,
+            analysis_duration=0.005,
+            packet_at=10.076,
+            replaced_frames=1,
+        )
+        snapshot = metrics.snapshot(
+            10.1, {"samples": 4, "mean_ms": 18.0}
+        )
+        self.assertEqual(snapshot["packets"], 2)
+        self.assertEqual(snapshot["effective_update_rate_hz"], 20.0)
+        self.assertEqual(snapshot["replaced_application_frames"], 3)
+        self.assertEqual(snapshot["frame_age_ms"]["mean"], 3.0)
+        self.assertEqual(snapshot["analysis_ms"]["mean"], 4.0)
+        self.assertEqual(snapshot["packet_interval_ms"]["mean"], 60.0)
+        self.assertEqual(snapshot["capture_interarrival_ms"]["samples"], 4)
 
     def test_capture_failure_does_not_start_hue(self):
         hue = FakeHue()

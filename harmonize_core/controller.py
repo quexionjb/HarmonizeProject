@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 import logging
+import statistics
 import threading
 import time
 from typing import Callable
 
 from .analysis import FrameAnalyzer
-from .capture import CaptureReadError, CaptureSource
+from .capture import CapturedFrame, CaptureReadError, CaptureSource
 from .errors import HarmonizeError
 from .hue import EntertainmentArea, HueBridge
 from .light_state import HueLightStateManager, LightStateSnapshot
@@ -26,6 +27,77 @@ class LifecycleState(str, Enum):
     RECOVERING = "RECOVERING"
     STOPPING = "STOPPING"
     ERROR = "ERROR"
+
+
+def _milliseconds_summary(values: list[float]) -> dict[str, float] | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return {
+        "mean": round(statistics.fmean(values) * 1000, 3),
+        "median": round(statistics.median(values) * 1000, 3),
+        "p95": round(ordered[round((len(ordered) - 1) * 0.95)] * 1000, 3),
+        "max": round(max(values) * 1000, 3),
+    }
+
+
+class _StreamMetrics:
+    """Small in-memory window; emits one aggregate log instead of frame logs."""
+
+    def __init__(self, update_interval_seconds: float, started_at: float):
+        self.update_interval_seconds = update_interval_seconds
+        self.started_at = started_at
+        self.last_packet_at: float | None = None
+        self.packet_count = 0
+        self.replaced_frames = 0
+        self.frame_ages: list[float] = []
+        self.analysis_durations: list[float] = []
+        self.packet_intervals: list[float] = []
+
+    def record(
+        self,
+        *,
+        captured_at: float,
+        analysis_started_at: float,
+        analysis_duration: float,
+        packet_at: float,
+        replaced_frames: int,
+    ) -> None:
+        self.packet_count += 1
+        self.replaced_frames += replaced_frames
+        self.frame_ages.append(max(0.0, analysis_started_at - captured_at))
+        self.analysis_durations.append(analysis_duration)
+        if self.last_packet_at is not None:
+            self.packet_intervals.append(packet_at - self.last_packet_at)
+        self.last_packet_at = packet_at
+
+    def snapshot(
+        self,
+        now: float,
+        capture_timing: dict[str, float | int] | None,
+    ) -> dict[str, object]:
+        elapsed = max(0.000001, now - self.started_at)
+        gap_threshold = max(
+            self.update_interval_seconds * 1.5,
+            self.update_interval_seconds + 0.01,
+        )
+        return {
+            "window_seconds": round(elapsed, 3),
+            "configured_interval_ms": round(
+                self.update_interval_seconds * 1000, 3
+            ),
+            "packets": self.packet_count,
+            "effective_update_rate_hz": round(self.packet_count / elapsed, 3),
+            "frame_age_ms": _milliseconds_summary(self.frame_ages),
+            "analysis_ms": _milliseconds_summary(self.analysis_durations),
+            "packet_interval_ms": _milliseconds_summary(self.packet_intervals),
+            "long_packet_gaps": sum(
+                interval > gap_threshold for interval in self.packet_intervals
+            ),
+            "long_gap_threshold_ms": round(gap_threshold * 1000, 3),
+            "replaced_application_frames": self.replaced_frames,
+            "capture_interarrival_ms": capture_timing,
+        }
 
 
 class HarmonizeController:
@@ -52,6 +124,7 @@ class HarmonizeController:
         transport_reconnect_attempts: int = 3,
         transport_reconnect_initial_seconds: float = 0.5,
         hue_status_interval_seconds: float = 10.0,
+        metrics_interval_seconds: float = 10.0,
         failure_injection: str | None = None,
         light_state_factory: Callable[[EntertainmentArea], HueLightStateManager] | None = None,
         transport_factory: Callable[..., OpenSslDtlsTransport] = OpenSslDtlsTransport,
@@ -76,6 +149,7 @@ class HarmonizeController:
             transport_reconnect_initial_seconds
         )
         self.hue_status_interval_seconds = hue_status_interval_seconds
+        self.metrics_interval_seconds = metrics_interval_seconds
         self.failure_injection = failure_injection
         self.light_state_factory = light_state_factory
         self.transport_factory = transport_factory
@@ -193,6 +267,18 @@ class HarmonizeController:
             client_key=self.client_key,
         )
 
+    def _read_sample(self) -> CapturedFrame:
+        read_sample = getattr(self.capture, "read_sample", None)
+        if read_sample is not None:
+            return read_sample()
+        frame = self.capture.read()
+        captured_at = self.capture.last_frame_monotonic or time.monotonic()
+        return CapturedFrame(frame, captured_at, 0, 0)
+
+    def _capture_timing_snapshot(self):
+        snapshot = getattr(self.capture, "timing_snapshot", None)
+        return snapshot() if snapshot is not None else None
+
     def _inject(self, stage: str) -> None:
         if self.failure_injection == stage:
             raise HarmonizeError(f"Injected Milestone 4 failure at {stage}")
@@ -291,7 +377,7 @@ class HarmonizeController:
                 light_state_manager = self.light_state_factory(self.area)
 
             self.capture.open()
-            frame = self.capture.read()
+            frame = self._read_sample().frame
             analyzer = self._analyzer(frame)
             builder = HueStreamPacketBuilder(self.area.resource_id)
             self._inject("after_capture_ready")
@@ -309,9 +395,14 @@ class HarmonizeController:
             self._transition(LifecycleState.STREAMING)
             self.ready.set()
             last_hue_check = time.monotonic()
+            last_metrics_log = last_hue_check
+            metrics = _StreamMetrics(
+                self.update_interval_seconds, last_metrics_log
+            )
             while not self._stop_requested.is_set():
                 try:
-                    frame = self.capture.read()
+                    sample = self._read_sample()
+                    frame = sample.frame
                 except CaptureReadError as exc:
                     self._transition(
                         LifecycleState.RECOVERING,
@@ -327,10 +418,20 @@ class HarmonizeController:
                     )
 
                 try:
+                    analysis_started = time.monotonic()
                     colors = analyzer.colors(frame)
+                    analysis_duration = time.monotonic() - analysis_started
                     transport.send(builder.build(colors))
+                    packet_at = time.monotonic()
+                    metrics.record(
+                        captured_at=sample.captured_monotonic,
+                        analysis_started_at=analysis_started,
+                        analysis_duration=analysis_duration,
+                        packet_at=packet_at,
+                        replaced_frames=sample.replaced_frames,
+                    )
                     with self._health_lock:
-                        self._last_packet_monotonic = time.monotonic()
+                        self._last_packet_monotonic = packet_at
 
                     if (
                         time.monotonic() - last_hue_check
@@ -343,6 +444,22 @@ class HarmonizeController:
                                 f'Hue Entertainment area "{current.name}" '
                                 f"reported status {current.status!r}"
                             )
+
+                    now = time.monotonic()
+                    if now - last_metrics_log >= self.metrics_interval_seconds:
+                        log_event(
+                            self._logger,
+                            logging.INFO,
+                            "stream_metrics",
+                            **metrics.snapshot(
+                                now, self._capture_timing_snapshot()
+                            ),
+                        )
+                        last_metrics_log = now
+                        metrics = _StreamMetrics(
+                            self.update_interval_seconds, now
+                        )
+                        metrics.last_packet_at = packet_at
                 except HarmonizeError as exc:
                     log_event(
                         self._logger,
