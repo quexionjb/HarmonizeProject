@@ -482,8 +482,8 @@ Before implementation, tests should cover:
 - the complete offline suite plus controlled live ON, sustained STREAMING,
   explicit OFF, service shutdown, and a deliberate bridge/session-loss test.
 
-No status-monitor change has been implemented or approved. Step 3 and all later
-Milestone 9 experiments remain unstarted.
+The analysis above was completed before implementation approval. Step 3 and all
+later Milestone 9 experiments remain unstarted.
 
 ### Prioritization decision after subjective comparison
 
@@ -494,3 +494,53 @@ reducing frame age; a higher packet rate alone is secondary because 33 ms was
 not clearly distinguishable from 50 ms and reduced measured frame age by less
 than 1 ms in the controlled trials. The 50 ms setting remains the safe/default
 state unless later evidence supports changing it.
+
+### 2026-09-15 - Asynchronous Hue status monitor implementation
+
+The approved minimal status-query fix is implemented without changing capture,
+sampling, brightness, packet content, or the configured 50 ms pacing:
+
+- A dedicated daemon worker owns an independent HueBridge and
+  requests.Session.
+- The packet loop dispatches at most one status request and polls only completed
+  in-memory results. It never waits for the HTTPS response.
+- Status results carry a streaming-session generation. Stale results are
+  discarded, and the monitor is stopped and replaced around recovery.
+- Active, inactive, and request-error semantics are unchanged. Inactive or
+  failed checks still enter the existing Hue/DTLS recovery path.
+- The original policy is preserved: the next ten-second interval starts when
+  the previous check completes.
+- Monitor shutdown is bounded at 5.5 seconds, just beyond the existing
+  five-second Hue request timeout, and its HTTP session is closed by its worker.
+
+Focused tests use a deliberately blocked status query and confirm packet sends
+continue, a second request cannot overlap it, shutdown is bounded, stale
+generation results are ignored, unexpected worker errors become HarmonizeError,
+inactive status triggers the existing recovery sequence, and the independent
+Hue session is closed. The complete suite passed 122 tests in 2.701 seconds.
+
+The final live trial used the existing isolated 50 ms configuration, 640x480
+YUYV capture at approximately 30.02 FPS, and unchanged TV area mapping. Four
+consecutive ten-second metric windows reported:
+
+| Measurement | Observed range |
+| --- | ---: |
+| Effective update rate | 17.603--17.984 Hz |
+| Mean packet interval | 55.880--56.808 ms |
+| Maximum packet interval | 57.730--58.921 ms |
+| Mean frame age | 16.877--17.168 ms |
+| Mean analysis duration | 5.348--6.272 ms |
+| Long packet gaps above 75 ms | 0 in every window |
+| Hue, DTLS, capture, or recovery errors | none |
+
+Before this fix, the 50 ms control produced one approximately 84--96 ms status
+query gap per ten-second window. The final trial removed that recurring tail:
+all four windows stayed below 59 ms. The test daemon shut down cleanly, closed
+capture and Entertainment streaming, and completed light cleanup. The installed
+release was then returned to its unchanged 50 ms configuration and verified
+STREAMING with its service active/running and zero restarts.
+
+This validates removal of the synchronous query from the streaming-critical
+path under the observed live conditions. It is not a direct video-to-photon
+latency measurement, and the short trial does not replace longer appliance
+soak testing. No 20 ms pacing or visual-quality experiment was performed.

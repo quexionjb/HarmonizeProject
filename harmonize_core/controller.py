@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 import logging
@@ -100,6 +101,100 @@ class _StreamMetrics:
         }
 
 
+@dataclass(frozen=True)
+class _HueStatusResult:
+    generation: int
+    area: EntertainmentArea | None
+    error: HarmonizeError | None
+
+
+class _HueStatusMonitor:
+    """Run single-flight Hue status queries away from the packet loop."""
+
+    def __init__(
+        self,
+        bridge_factory: Callable[[], HueBridge],
+        area_name: str,
+    ):
+        self._bridge_factory = bridge_factory
+        self._area_name = area_name
+        self._lock = threading.Lock()
+        self._request_event = threading.Event()
+        self._stop_requested = threading.Event()
+        self._requested_generation: int | None = None
+        self._pending = False
+        self._result: _HueStatusResult | None = None
+        self._thread = threading.Thread(
+            target=self._run,
+            name="harmonize-hue-status",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def request(self, generation: int) -> bool:
+        with self._lock:
+            if (
+                self._stop_requested.is_set()
+                or self._pending
+                or self._result is not None
+            ):
+                return False
+            self._pending = True
+            self._requested_generation = generation
+        self._request_event.set()
+        return True
+
+    def poll(self, generation: int) -> _HueStatusResult | None:
+        with self._lock:
+            result = self._result
+            if result is None:
+                return None
+            self._result = None
+        if result.generation != generation:
+            return None
+        return result
+
+    def stop(self, timeout_seconds: float) -> bool:
+        self._stop_requested.set()
+        self._request_event.set()
+        self._thread.join(timeout_seconds)
+        return not self._thread.is_alive()
+
+    def _run(self) -> None:
+        bridge: HueBridge | None = None
+        try:
+            while True:
+                self._request_event.wait()
+                self._request_event.clear()
+                if self._stop_requested.is_set():
+                    return
+                with self._lock:
+                    generation = self._requested_generation
+                if generation is None:
+                    continue
+                try:
+                    if bridge is None:
+                        bridge = self._bridge_factory()
+                    area = bridge.resolve_name(self._area_name)
+                    result = _HueStatusResult(generation, area, None)
+                except Exception as exc:
+                    error = (
+                        exc
+                        if isinstance(exc, HarmonizeError)
+                        else HarmonizeError(f"Hue status monitor failed: {exc}")
+                    )
+                    result = _HueStatusResult(generation, None, error)
+                with self._lock:
+                    self._result = result
+                    self._pending = False
+                    self._requested_generation = None
+        finally:
+            if bridge is not None:
+                bridge.close()
+
+
 class HarmonizeController:
     """Own capture, Hue session, analysis, transport, recovery, and cleanup."""
 
@@ -124,6 +219,8 @@ class HarmonizeController:
         transport_reconnect_attempts: int = 3,
         transport_reconnect_initial_seconds: float = 0.5,
         hue_status_interval_seconds: float = 10.0,
+        hue_status_shutdown_timeout_seconds: float = 5.5,
+        hue_status_bridge_factory: Callable[[], HueBridge] | None = None,
         metrics_interval_seconds: float = 10.0,
         failure_injection: str | None = None,
         light_state_factory: Callable[[EntertainmentArea], HueLightStateManager] | None = None,
@@ -149,6 +246,12 @@ class HarmonizeController:
             transport_reconnect_initial_seconds
         )
         self.hue_status_interval_seconds = hue_status_interval_seconds
+        self.hue_status_shutdown_timeout_seconds = (
+            hue_status_shutdown_timeout_seconds
+        )
+        self.hue_status_bridge_factory = (
+            hue_status_bridge_factory or (lambda: self.hue.new_session())
+        )
         self.metrics_interval_seconds = metrics_interval_seconds
         self.failure_injection = failure_injection
         self.light_state_factory = light_state_factory
@@ -353,6 +456,8 @@ class HarmonizeController:
     def run(self) -> None:
         stream_stop_required = False
         transport = None
+        status_monitor: _HueStatusMonitor | None = None
+        status_generation = 0
         light_state_manager = None
         light_snapshot: LightStateSnapshot | None = None
         self._transition(LifecycleState.STARTING)
@@ -392,6 +497,11 @@ class HarmonizeController:
             transport.start()
             self._inject("after_dtls_ready")
 
+            status_monitor = _HueStatusMonitor(
+                self.hue_status_bridge_factory,
+                self.area.name,
+            )
+            status_monitor.start()
             self._transition(LifecycleState.STREAMING)
             self.ready.set()
             last_hue_check = time.monotonic()
@@ -433,19 +543,29 @@ class HarmonizeController:
                     with self._health_lock:
                         self._last_packet_monotonic = packet_at
 
-                    if (
-                        time.monotonic() - last_hue_check
-                        >= self.hue_status_interval_seconds
-                    ):
-                        current = self.hue.resolve_name(self.area.name)
+                    status_result = status_monitor.poll(status_generation)
+                    if status_result is not None:
                         last_hue_check = time.monotonic()
-                        if current.status != "active":
+                        if status_result.error is not None:
+                            raise status_result.error
+                        current = status_result.area
+                        if current is None or current.status != "active":
+                            name = (
+                                self.area.name if current is None else current.name
+                            )
+                            status = None if current is None else current.status
                             raise HarmonizeError(
-                                f'Hue Entertainment area "{current.name}" '
-                                f"reported status {current.status!r}"
+                                f'Hue Entertainment area "{name}" '
+                                f"reported status {status!r}"
                             )
 
                     now = time.monotonic()
+                    if (
+                        now - last_hue_check
+                        >= self.hue_status_interval_seconds
+                    ):
+                        status_monitor.request(status_generation)
+
                     if now - last_metrics_log >= self.metrics_interval_seconds:
                         log_event(
                             self._logger,
@@ -467,9 +587,25 @@ class HarmonizeController:
                         "stream_recovery_started",
                         error=str(exc),
                     )
+                    status_generation += 1
+                    if not status_monitor.stop(
+                        self.hue_status_shutdown_timeout_seconds
+                    ):
+                        log_event(
+                            self._logger,
+                            logging.WARNING,
+                            "hue_status_monitor_stop_timed_out",
+                            context="recovery",
+                        )
+                    status_monitor = None
                     transport, builder, analyzer = self._recover_transport(
                         transport, frame
                     )
+                    status_monitor = _HueStatusMonitor(
+                        self.hue_status_bridge_factory,
+                        self.area.name,
+                    )
+                    status_monitor.start()
                     last_hue_check = time.monotonic()
 
                 self._stop_requested.wait(self.update_interval_seconds)
@@ -486,6 +622,12 @@ class HarmonizeController:
         finally:
             if self.state is not LifecycleState.ERROR:
                 self._transition(LifecycleState.STOPPING)
+            if status_monitor is not None and not status_monitor.stop(
+                self.hue_status_shutdown_timeout_seconds
+            ):
+                remember_cleanup_error(
+                    HarmonizeError("Hue status monitor did not stop in time")
+                )
             if transport is not None:
                 try:
                     transport.close()
