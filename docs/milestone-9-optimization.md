@@ -381,3 +381,106 @@ the source is only 30 FPS, mean frame age changed very little, the visible
 video-to-light latency was not measured, and the agent cannot judge appearance.
 The periodic Hue status request is now a measured jitter source worth retaining
 as an observation for later work, outside Steps 1 and 2.
+
+#### 2026-09-15 - Extended 33 ms subjective observation
+
+- **Commit:** `671476c`; pacing changed only in the isolated temporary config.
+- **Activation:** the released appliance was placed in IDLE through its normal
+  HTTP OFF command. The instrumented topic-branch daemon then used the same
+  capture device, bridge, and `TV area` with separate `/tmp` control, health,
+  and journal paths and `update_interval_seconds = 0.033`.
+- **Duration and timing:** STREAMING ran for 302.427 seconds. After warm-up,
+  effective update rate stayed approximately 24.81--24.95 Hz, mean packet
+  intervals were approximately 40.12--40.30 ms, mean frame age was
+  approximately 15.69--17.31 ms, and mean analysis duration was approximately
+  6.46--6.65 ms. Capture remained stable at approximately 30.016 FPS.
+- **Stability:** no capture, Hue, DTLS, controller, or recovery error occurred.
+  Every stable 10-second window still contained one long packet gap, generally
+  approximately 69--90 ms. Explicit OFF completed normally, stopped
+  Entertainment, and powered off both area lights. The temporary daemon then
+  exited cleanly.
+- **Subjective observation:** slight preference for 33 ms, but inconclusive /
+  not clearly distinguishable from 50 ms. Both settings felt snappy, and no
+  flicker, color degradation, or brightness degradation was observed at 33 ms.
+- **Result:** inconclusive subjective improvement with no observed visual
+  regression. This supports retaining 33 ms as a candidate, but does not by
+  itself justify changing the default.
+- **Rollback/default decision:** the released appliance was returned to
+  STREAMING with its unchanged installed 50 ms configuration. It remained
+  active/running with zero service restarts.
+- **Notes:** no tracked or installed visual-processing setting changed, and no
+  20 ms test or later experiment began.
+
+### Periodic Hue status-query gap analysis
+
+The recurring gap is caused by a synchronous network request in the controller
+thread that also analyzes frames and transmits packets:
+
+1. After sending and timestamping a packet, `HarmonizeController.run` checks
+   whether `hue_status_interval_seconds` (currently 10 seconds) has elapsed.
+2. It calls `self.hue.resolve_name(self.area.name)` before it can reach the
+   next configured pacing wait or process another frame.
+3. `HueBridge.resolve_name` calls `list_entertainment_resources`.
+4. That method performs a blocking HTTPS GET of
+   `/clip/v2/resource/entertainment_configuration` through
+   `HueBridge._request` and `requests.Session.request`, with the normal
+   five-second request timeout.
+5. Only after the complete response is received and parsed can the streaming
+   loop continue.
+
+Eight separate read-only live timings returned `active` every time. The first
+request, which included connection setup, took 190.783 ms. The following seven
+connection-reused requests took 25.086--41.835 ms, averaging 30.596 ms with a
+29.920 ms median. This agrees with the excess above ordinary packet intervals:
+the extended 33 ms observation normally sent every approximately 40 ms but
+showed one approximately 69--90 ms interval per status-check window. The
+earlier 50 ms control showed the same pattern at approximately 84--96 ms.
+
+The query has an important lifecycle purpose: because UDP/DTLS packet writes do
+not acknowledge that the Entertainment area remains active, it detects a
+bridge-side stopped or displaced session and enters the existing transport/Hue
+recovery path. Simply deleting the query is the smallest code change but is not
+the safest behavior because Harmonize could continue sending while the bridge
+no longer applies its stream.
+
+The proposed minimal safe fix is a single-flight asynchronous status monitor:
+
+- Run at most one read-only Entertainment status request at a time on a small
+  dedicated daemon worker.
+- Give that worker its own `HueBridge` / `requests.Session` so the shared
+  startup, recovery, and cleanup session is never used concurrently.
+- Have the packet loop poll an in-memory completed result without blocking.
+- Preserve current semantics: an inactive status or request failure enters the
+  existing recovery path; an active status schedules the next check.
+- Stop and boundedly join the monitor before controller cleanup, and discard
+  stale results across recovery/session generations.
+- Keep the same 10-second interval and existing HTTP timeout initially so only
+  scheduling, not policy, changes.
+
+Expected effect: remove the recurring 25--42 ms network wait from the
+streaming-critical thread. At 33 ms, ordinary packet timing should remain near
+40 ms instead of showing a network-caused approximately 69--90 ms tail every
+10 seconds. Average update rate would improve only slightly because this is one
+request per 10 seconds; the meaningful gain is reduced worst-case jitter.
+Bridge-side session-loss detection should remain equivalent, delayed only
+until the next nonblocking packet-loop poll after the query completes.
+Startup, recovery policy, explicit OFF behavior, and Hue cleanup should remain
+unchanged. The additional thread and session have negligible expected steady
+CPU/memory cost.
+
+Before implementation, tests should cover:
+
+- a deliberately slow active-status response while packet sends continue at
+  the configured cadence;
+- single-flight behavior so checks never overlap;
+- active, inactive, timeout, malformed-response, and request-error results;
+- preservation of the existing recovery behavior for inactive/error results;
+- stale-result rejection after a recovery or new session generation;
+- stop during an in-flight check, bounded join, and session closure;
+- no shared `requests.Session` use between monitoring and lifecycle actions;
+- metrics showing that the 10-second long gap disappears at both 50 and 33 ms;
+- the complete offline suite plus controlled live ON, sustained STREAMING,
+  explicit OFF, service shutdown, and a deliberate bridge/session-loss test.
+
+No status-monitor change has been implemented or approved. Step 3 and all later
+Milestone 9 experiments remain unstarted.
