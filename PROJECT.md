@@ -594,7 +594,16 @@ Quality work should be measurable and reversible, and must not destabilize lifec
 
 ### Status
 
-Not started.
+In progress on branch m9-ambilight-quality. Baseline instrumentation and the
+controlled 50 ms/33 ms pacing comparison are complete. The subjective result
+was a slight preference for 33 ms, but inconclusive and not clearly
+distinguishable from 50 ms, so the installed v3.0.0 appliance remains unchanged
+at its 50 ms release setting. Commit 7cac8ed moves the ten-second Hue status
+query off the streaming-critical path and removes its measured recurring packet
+gap without changing the visual algorithm. The next approved work should focus
+on capture-path/end-to-end latency, beginning with measurement of the observed
+640x480 YUYV 30 FPS V4L2 path and its four reported buffers. That experiment
+has not started; see docs/milestone-9-optimization.md before continuing.
 
 ## Milestone 10 — Final Validation and Documentation
 

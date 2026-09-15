@@ -544,3 +544,28 @@ This validates removal of the synchronous query from the streaming-critical
 path under the observed live conditions. It is not a direct video-to-photon
 latency measurement, and the short trial does not replace longer appliance
 soak testing. No 20 ms pacing or visual-quality experiment was performed.
+
+### Handoff checkpoint
+
+- **Branch/implementation:** m9-ambilight-quality; async Hue status-monitor
+  optimization completed at 7cac8ed.
+- **33 ms conclusion:** stable and free of observed flicker, color, or
+  brightness degradation, with a slight subjective preference over 50 ms, but
+  inconclusive and not reliably distinguishable. It is not the default.
+- **Status-monitor conclusion:** moving the ten-second HTTPS query off the
+  packet thread removed the recurring measured packet tail. Four final 50 ms
+  live windows had zero gaps above 75 ms and maxima below 59 ms.
+- **Installed appliance:** the v3.0.0 installation was not changed by these
+  experiments. It currently runs the released 50 ms version and was verified
+  STREAMING with the service active/running and zero restarts.
+- **Next priority:** investigate capture-path and end-to-end latency before
+  pursuing a higher refresh rate. The live source negotiated V4L2 at 640x480,
+  YUYV, 30 FPS. A request for zero capture buffers was rejected and OpenCV
+  reported four buffers. Determine how much capture buffering and frame
+  acquisition contribute to frame age, and seek a reversible reduction without
+  destabilizing capture.
+- **Boundary:** that capture experiment has not started. Do not change capture,
+  pacing, sampling, brightness, smoothing, gamma, saturation, black-bar logic,
+  or the deployed appliance until the next experiment is explicitly approved.
+
+The next agent should begin by reading PROJECT.md and this document in full.
