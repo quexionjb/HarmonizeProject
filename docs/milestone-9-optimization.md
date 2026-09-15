@@ -710,3 +710,64 @@ The next agent should begin by reading PROJECT.md and this document in full.
 - **Final state:** the released appliance returned to STREAMING with the same
   service PID, active/running status, and zero restarts. Step 6 black-bar
   measurement remains unstarted pending review.
+
+#### 2026-09-15 - Step 5 live candidate follow-up and option design
+
+- **Configuration:** temporary topic-branch fast path with
+  `brightness_adjustment = 0`; capture, two-channel sampling, packet encoding,
+  Hue status policy, and 50 ms pacing were unchanged. The installed v3.0.0
+  appliance was placed in normal IDLE while the isolated daemon used the prior
+  `/tmp` M9 control, health, and light-state paths. Installed files were not
+  replaced.
+- **Offline gate:** one focused characterization test pinned the candidate's
+  intentionally different result, and the complete suite passed 123 tests in
+  2.705 seconds before live activation.
+- **Duration and objective result:** the candidate remained STREAMING for
+  266.421 seconds and produced 26 complete ten-second metric windows. Mean
+  analysis time stayed between 0.619 and 0.677 ms (window p95 0.666--0.774 ms),
+  effective update rate stayed between 19.532 and 19.629 Hz, and mean packet
+  interval stayed between 51.115 and 51.198 ms. Mean application frame age was
+  16.768--17.648 ms; capture remained 30.014--30.024 FPS. Every window had
+  zero packet gaps above 75 ms, and the largest observed packet interval was
+  52.797 ms. No capture, Hue, DTLS, controller, or recovery error occurred.
+- **Prior-control comparison:** the asynchronous-status 50 ms control measured
+  5.348--6.272 ms mean analysis, 17.603--17.984 Hz, and 55.880--56.808 ms mean
+  packet intervals. The live candidate therefore removed roughly 4.7--5.6 ms
+  from analysis and from the effective post-send pacing cycle. This comparison
+  used the same hardware and configuration but was not an immediately
+  alternating A/B run, so scene-dependent differences remain possible.
+- **Subjective observation (owner):** **visually acceptable / no noticeable
+  degradation**. The owner reported no noticeable problem with colors,
+  brightness, or light behavior.
+- **Cleanup/final state:** explicit candidate OFF completed normal capture,
+  Entertainment, and light cleanup; the isolated daemon then exited cleanly.
+  The installed released visual path was restored to STREAMING with the same
+  service PID, active/running status, and zero restarts. The temporary
+  candidate implementation was removed from the working tree.
+  The restored 122-test offline suite passed in 3.113 seconds.
+- **Revised result:** the fast path remains non-equivalent by deterministic
+  byte comparison, but the measured performance improvement was material and
+  its differences were not noticeable or objectionable in this live trial.
+  It is suitable for an explicit opt-in implementation, not a transparent
+  replacement for released behavior.
+- **Recommended configuration:** add
+  `ambilight.color_processing_mode = "legacy_hsv" | "direct_rgb"`.
+  `legacy_hsv` must remain the schema default and the explicit tracked
+  deployment value so missing/older configuration preserves v3.0.0 output.
+  `direct_rgb` selects the tested fast path and must be rejected during config
+  validation unless `brightness_adjustment == 0`; it must never silently
+  disable a nonzero brightness adjustment. Do not add a CLI override, which
+  would make accidental activation easier.
+- **Recommended implementation boundary:** thread the validated mode through
+  `AmbilightConfig`, `RuntimeOptions`, `HarmonizeController`, and
+  `FrameAnalyzer`; branch only in multi-light frame analysis. Keep
+  `adjust_brightness` and the legacy branch intact. Emit the selected mode once
+  in structured startup logging. Tests should prove the absent/default setting
+  retains the lossy legacy witness bytes, the opt-in produces the characterized
+  direct bytes, invalid mode/nonzero-adjustment combinations fail closed, and
+  positive brightness plus historical single-light behavior remain unchanged.
+- **Recommendation/default decision:** implement `direct_rgb` as an explicit
+  opt-in, but keep `legacy_hsv` as the permanent compatibility default. A later
+  separately approved deployment may choose `direct_rgb` explicitly for this
+  appliance based on the successful live trial. No permanent implementation or
+  deployed setting change has been made pending review.
