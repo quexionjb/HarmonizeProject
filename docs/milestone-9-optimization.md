@@ -569,3 +569,91 @@ soak testing. No 20 ms pacing or visual-quality experiment was performed.
   or the deployed appliance until the next experiment is explicitly approved.
 
 The next agent should begin by reading PROJECT.md and this document in full.
+
+#### 2026-09-15 - Step 4 capture-path latency investigation
+
+- **Commit/configuration:** documentation-only investigation on
+  `m9-ambilight-quality`; the installed v3.0.0 application, visual algorithm,
+  brightness, sampling, 50 ms pacing, and deployment were not changed. The
+  appliance was placed in normal IDLE through its HTTP control while isolated
+  probes owned the capture device, then returned to STREAMING.
+- **Question and measurement boundary:** the existing Harmonize frame-age
+  metric starts when `VideoCapture.read()` returns. It measures time waiting in
+  the application's newest-frame slot, but cannot measure age already accrued
+  in the capture card, USB transfer, kernel, or OpenCV backend. A native V4L2
+  MMAP probe therefore compared each `VIDIOC_DQBUF` timestamp with
+  `CLOCK_MONOTONIC` at dequeue. The device marked its timestamps monotonic and
+  start-of-exposure (SOE). OpenCV 4.10.0's `CAP_PROP_POS_MSEC` exposed the same
+  timestamps and allowed the native result to be checked through the deployed
+  backend.
+- **Relevant backend behavior:** OpenCV's V4L2 implementation defaults to four
+  requested buffers. `CAP_PROP_BUFFERSIZE=0` is not a valid low-buffer request
+  for that implementation, explaining the previously observed rejection; it
+  left the effective default at four. This WARRKY/`uvcvideo` device accepted
+  both four buffers and an explicit one-buffer request and reported those
+  counts back correctly. See the
+  [OpenCV V4L2 source](https://github.com/opencv/opencv/blob/4.x/modules/videoio/src/cap_v4l.cpp)
+  and the
+  [Linux V4L2 buffer timestamp specification](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/buffer.html).
+- **Native steady-state result:** at the deployed-style 640x480 YUYV, 30 FPS
+  format, 300 measured frames after a 30-frame warm-up had no sequence gaps.
+  Four requested/allocated buffers produced 29.747 ms median age, 29.830 ms
+  p95, and 29.847 ms maximum. One requested/allocated buffer produced 29.746
+  ms median, 29.827 ms p95, and 29.834 ms maximum.
+- **OpenCV steady-state result:** matching 150-frame checks reported 30.355 ms
+  median / 30.455 ms p95 / 31.084 ms maximum with the default four buffers,
+  versus 30.303 ms / 30.409 ms / 30.927 ms with one buffer. The median
+  difference was 0.052 ms and is not meaningful. Because the timestamp source
+  is SOE, the approximately 30 ms primarily covers acquisition and delivery of
+  one 30 FPS frame; it is not evidence of a four-frame backlog.
+- **Controlled stall result:** after an artificial 200 ms pause in reads, the
+  four-buffer path immediately returned frames aged 197.794, 164.989, 132.140,
+  and 99.260 ms, then returned to approximately 30 ms. The one-buffer path
+  returned one 197.838 ms frame, then returned directly to approximately 30 ms.
+  Thus buffer count matters after a reader stall, but not while the dedicated
+  Harmonize capture worker drains continuously. The application's latest-frame
+  slot also lets the capture worker replace these queued frames rapidly; the
+  four stale reads completed in about 2 ms total in this deliberately induced
+  case.
+- **Interpretation:** current capture buffering is not adding meaningful
+  steady-state stale-frame latency. Four allocated buffers are capacity, not a
+  standing four-frame queue. The measured lower-bound capture contribution is
+  about 30 ms from SOE to userspace. Combining this non-simultaneous result with
+  the earlier approximately 17 ms mean application frame age suggests roughly
+  47 ms from capture SOE to analysis start under typical conditions, before
+  analysis, packet pacing/transmission, bridge processing, and lamp rendering.
+  That sum is an estimate, not a new end-to-end measurement, and excludes any
+  latency before the capture device's SOE timestamp.
+- **How directly latency can be measured:** V4L2 timestamps directly measure
+  capture SOE-to-dequeue age on this driver, and OpenCV exposes them for a
+  possible future aggregate metric. They cannot establish HDMI-event-to-light
+  latency. A defensible end-to-end measurement requires a controlled visible
+  source transition plus a common-clock observation of the source/reference
+  and Hue output, such as a high-frame-rate camera or photodiodes/data logger.
+  Harmonize's current clocks and metrics alone cannot infer that interval.
+- **Smallest safe reduction experiment:** no steady-state buffer reduction is
+  justified by these results. If resilience to rare capture-worker stalls is
+  considered worth testing, the smallest backend experiment is to replace the
+  rejected zero-buffer request with an explicit one-buffer request only in an
+  isolated topic-branch daemon. Keep every other setting unchanged and compare
+  V4L2/OpenCV timestamp age, capture interarrival and sequence gaps,
+  application frame age, packet cadence, CPU/RSS, reconnect behavior, and a
+  sustained live STREAMING/explicit-OFF cycle against the effective
+  four-buffer control. Include a controlled reader-stall test. Do not deploy or
+  make it the default without review.
+- **Risks:** with one buffer, capture cannot continue into spare queued buffers
+  while userspace owns or converts the sole dequeued buffer. That can trade
+  shorter backlog recovery for dropped frames, lower throughput, new jitter,
+  driver-specific instability, or worse recovery behavior under CPU pressure.
+  `CAP_PROP_BUFFERSIZE` support is backend/device-specific. A native timestamp
+  also does not include upstream HDMI/capture-hardware delay, and SOE-to-dequeue
+  age must not be mislabeled full end-to-end latency.
+- **Rollback:** retain the present effective four-buffer V4L2 behavior. For an
+  approved isolated one-buffer trial, rollback is the one-line buffer request
+  reversal followed by capture reopen; the installed release remains untouched.
+- **Result:** accepted as an investigation result: no meaningful normal-path
+  stale-frame queue was found, while a bounded backlog effect was demonstrated
+  only after an induced reader pause. A backend/capture-path implementation is
+  intentionally stopped for owner review.
+- **Final state:** the released appliance returned to STREAMING with the same
+  service PID, active/running status, and zero restarts.
