@@ -657,3 +657,56 @@ The next agent should begin by reading PROJECT.md and this document in full.
   intentionally stopped for owner review.
 - **Final state:** the released appliance returned to STREAMING with the same
   service PID, active/running status, and zero restarts.
+
+#### 2026-09-15 - Step 5 brightness-zero analysis fast-path experiment
+
+- **Commit/configuration:** offline characterization on
+  `m9-ambilight-quality` using OpenCV 4.10.0 and the released analysis
+  semantics. The candidate changed only the zero-adjustment path: it omitted
+  the BGR-to-HSV-to-BGR round trip but retained the BGR-to-RGB conversion,
+  sampling bounds, arithmetic regional means, integer conversion, and legacy
+  HueStream encoding. No application implementation or installed file was
+  changed.
+- **Equivalence method:** every one of the 16,777,216 possible 8-bit BGR input
+  colors was passed through the released `adjust_brightness(frame, 0)` path.
+  The released result and unchanged input were compared both as raw pixels and
+  after each component's legacy integer divide by two. A uniform sampling
+  region preserves each tested color through `cv2.mean`, so an encoded
+  component mismatch is also a deterministic final HueStream-byte
+  counterexample, independent of channel geometry.
+- **Equivalence result:** the zero-adjustment HSV round trip changed at least
+  one raw component for 14,396,589 colors. After legacy divide-by-two encoding,
+  10,616,708 colors (63.2805% of the complete color space) still differed in
+  at least one output component. For example, BGR `(0, 1, 60)` round-tripped to
+  `(0, 2, 60)`; a uniform region therefore changes the encoded RGB result from
+  `(30, 0, 0)` to `(30, 1, 0)`. This disproves byte-for-byte equivalence.
+- **Performance method:** the released and candidate paths were warmed up and
+  timed in alternating order over 40 blocks of 50 calls each (2,000 calls per
+  path). Input was a deterministic NumPy PCG64 seed `20260915` 640x480 BGR
+  frame. Two representative 84x168 edge regions modeled the two-light sampling
+  workload. The benchmark was isolated by placing the released appliance in
+  normal IDLE; no capture, Hue stream, or installed code participated.
+- **Performance result:** the released path measured 4.8614 ms mean, 4.8619 ms
+  median, and 4.9015 ms p95 per frame. The candidate measured 0.1960 ms mean,
+  0.2016 ms median, and 0.2346 ms p95. It was 24.8 times faster and saved
+  4.6654 ms mean analysis time on this synthetic workload. The selected random
+  frame happened to produce equal final regional bytes, but the exhaustive
+  solid-color counterexamples show that equality is not guaranteed.
+- **Interpretation:** the HSV round trip accounts for nearly all measured
+  analysis cost and is a meaningful CPU/critical-path optimization target.
+  However, bypassing it changes the released visual/output algorithm even when
+  `brightness_adjustment` is zero. The experiment therefore fails Step 5's
+  explicit byte-for-byte acceptance requirement; performance benefit cannot
+  override that compatibility boundary.
+- **Result:** rejected. Do not add the brightness-zero fast path under the
+  current no-visual-change requirement.
+- **Verification:** the unchanged complete offline suite passed 122 tests in
+  2.513 seconds after the experiment.
+- **Rollback/default decision:** no rollback was needed because no tracked
+  analysis code or installed release was modified. Retain the legacy HSV path.
+  Any future attempt to remove it must be treated as a separately approved
+  visual/output experiment with representative viewing comparisons, not as a
+  transparent optimization.
+- **Final state:** the released appliance returned to STREAMING with the same
+  service PID, active/running status, and zero restarts. Step 6 black-bar
+  measurement remains unstarted pending review.
