@@ -484,3 +484,13 @@ Before implementation, tests should cover:
 
 No status-monitor change has been implemented or approved. Step 3 and all later
 Milestone 9 experiments remain unstarted.
+
+### Prioritization decision after subjective comparison
+
+Based on the stable but inconclusive 33 ms comparison, Milestone 9 will
+prioritize end-to-end latency reduction over increasing refresh rate. The
+highest-value next investigation is removing measured critical-path delay and
+reducing frame age; a higher packet rate alone is secondary because 33 ms was
+not clearly distinguishable from 50 ms and reduced measured frame age by less
+than 1 ms in the controlled trials. The 50 ms setting remains the safe/default
+state unless later evidence supports changing it.
