@@ -287,6 +287,97 @@ Notes/follow-up:
 
 ### Recorded entries
 
-No optimization experiment has started. The observations above are the
-discovery baseline and must be converted into an instrumented 50 ms control in
-Step 1 before pacing or algorithm trials begin.
+#### 2026-09-15 - Step 1 instrumentation and 50 ms control
+
+- **Commit:** `671476c` (`Instrument Ambilight streaming performance`)
+- **Configuration:** topic-branch application with the released capture,
+  sampling, brightness, packet, and 50 ms pacing settings. A temporary config
+  used separate `/tmp` control, health, and light-state paths; installed files
+  were not replaced.
+- **Test conditions:** current HDMI movie playback and the same physical
+  capture, two-channel `TV area`, bridge, Pi, and LAN later used for Step 2.
+  The released appliance was put in IDLE through its normal interface while
+  this isolated process owned capture and Entertainment streaming.
+- **Capture:** V4L2 negotiated 640x480 YUYV at a reported and measured 30.0
+  FPS. OpenCV rejected the requested zero buffers and reported four buffers.
+  Stable capture interarrival means were 33.315 ms, with p95 values around
+  34 ms.
+- **Measurements:** four stable 10-second windows, excluding the first warm-up
+  window, averaged 17.601 updates/s. Mean packet interval was 56.819 ms
+  (median 56.588 ms, mean-window p95 57.530 ms). Mean frame age at analysis
+  start was 17.275 ms (mean-window p95 31.564 ms). Mean analysis duration was
+  6.111 ms. Each stable window contained one long packet gap, with observed
+  maxima of 83.5--96.2 ms, coincident with the synchronous 10-second Hue
+  status-check cadence.
+- **Resource sample:** 15 one-second `pidstat` samples averaged 58.87% of one
+  CPU and 96,583 KiB RSS. OpenSSL remained negligible in the prior discovery
+  measurement and was not separately sampled in this trial.
+- **Stability:** no capture recovery, Hue error, DTLS error, or controller
+  recovery occurred. The bounded run shut down cleanly, stopped Entertainment,
+  and powered off both area lights.
+- **Subjective observation:** not independently measurable by the agent. The
+  visual algorithm and output encoding were unchanged.
+- **Result:** accepted as the instrumented 50 ms control.
+- **Rollback/default decision:** released 50 ms pacing remains the tracked and
+  installed default.
+- **Notes:** earlier 720x480/~55 FPS results described a different GStreamer
+  path. The deployed-style direct V4L2 path actually used for these comparisons
+  is 640x480/30 FPS.
+
+#### 2026-09-15 - Step 2 33 ms pacing
+
+- **Commit:** `671476c`; pacing was changed only in a temporary trial config.
+- **Configuration:** identical to the Step 1 control except
+  `update_interval_seconds = 0.033`.
+- **Test conditions:** same sequential live setup and playback as Step 1.
+- **Measurements:** five stable 10-second windows, excluding the first warm-up
+  window, averaged 26.230 updates/s. Mean packet interval was 38.129 ms
+  (median 37.935 ms, mean-window p95 38.733 ms). Mean frame age at analysis
+  start was 16.587 ms (mean-window p95 31.141 ms). Mean analysis duration was
+  4.491 ms. Each stable window again contained one status-check-related long
+  gap, with observed maxima of 64.4--78.8 ms. Capture remained 30.0 FPS with a
+  33.315 ms mean interarrival.
+- **Resource sample:** 15 one-second `pidstat` samples averaged 71.00% of one
+  CPU and 99,192 KiB RSS.
+- **Comparison with control:** update rate increased 49.0%, while median packet
+  interval fell 18.653 ms. CPU increased 12.13 percentage points of one core
+  (20.6% relative) and RSS increased 2,609 KiB. Mean frame age fell only
+  0.688 ms because both trials already select the newest frame from a 30 FPS
+  source. The lower observed analysis mean is content/scheduling dependent and
+  must not be interpreted as a pacing optimization.
+- **Stability:** no capture recovery, Hue error, DTLS error, or controller
+  recovery occurred. Shutdown and light cleanup completed normally. The
+  released appliance was then returned to STREAMING with its unchanged 50 ms
+  installed configuration and still reported zero service restarts.
+- **Subjective observation:** not independently measurable by the agent. No
+  visual-processing code changed.
+- **Result:** accepted as evidence that 33 ms is stable and worthwhile for
+  further controlled use, but not yet accepted as the permanent default.
+- **Rollback/default decision:** the temporary 33 ms config was discarded;
+  tracked and installed configuration remain at 50 ms.
+- **Notes:** this trial supports continued evaluation of 33 ms. It does not
+  establish video-to-photon latency or prove a visible improvement. Step 3
+  (20 ms) and all later experiments remain unstarted.
+
+### Step 1-2 comparison
+
+| Measurement | 50 ms control | 33 ms trial | Interpretation |
+| --- | ---: | ---: | --- |
+| Effective update rate | 17.601 Hz | 26.230 Hz | 49.0% higher |
+| Mean packet interval | 56.819 ms | 38.129 ms | 18.690 ms shorter |
+| Median packet interval | 56.588 ms | 37.935 ms | 18.653 ms shorter |
+| Mean frame age | 17.275 ms | 16.587 ms | 0.688 ms lower |
+| Mean-window frame-age p95 | 31.564 ms | 31.141 ms | effectively unchanged |
+| Mean analysis duration | 6.111 ms | 4.491 ms | scene/scheduling dependent |
+| CPU, one core | 58.87% | 71.00% | 12.13 points higher |
+| RSS | 96,583 KiB | 99,192 KiB | 2,609 KiB higher |
+| Capture | 640x480 YUYV, 30.0 FPS | same | directly comparable |
+| Errors/recovery | none | none | both stable |
+| Long gaps | one per 10 s window | one per 10 s window | status-query cadence |
+
+The evidence supports 33 ms as the next candidate for continued use and
+subjective comparison. It does not justify changing the released default yet:
+the source is only 30 FPS, mean frame age changed very little, the visible
+video-to-light latency was not measured, and the agent cannot judge appearance.
+The periodic Hue status request is now a measured jitter source worth retaining
+as an observation for later work, outside Steps 1 and 2.
