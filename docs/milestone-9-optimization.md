@@ -771,3 +771,43 @@ The next agent should begin by reading PROJECT.md and this document in full.
   separately approved deployment may choose `direct_rgb` explicitly for this
   appliance based on the successful live trial. No permanent implementation or
   deployed setting change has been made pending review.
+
+### 2026-09-15 - Configurable performance options implementation
+
+The owner approved implementing the measured performance choices explicitly,
+while preserving released behavior as the compatibility defaults:
+
+- `ambilight.color_processing_mode` accepts only `legacy_hsv` and
+  `direct_rgb`. An absent setting defaults to `legacy_hsv`, which retains the
+  v3.0.0 BGR-to-HSV-to-BGR behavior. `direct_rgb` is rejected during offline
+  configuration validation unless `brightness_adjustment == 0`.
+- `ambilight.update_interval_seconds` remains configurable. Its default and
+  legacy value remain `0.05`; `0.033` is the measured faster option.
+- The generic example explicitly uses `legacy_hsv` and `0.05`. This Pi's
+  device-specific deployment profile explicitly selects `direct_rgb`, zero
+  brightness adjustment, and `0.033` seconds.
+- The selected color path, brightness adjustment, and update interval are
+  threaded into each controller instance. A structured `analysis_configured`
+  startup event records those three safe values plus frame dimensions.
+- Local STATUS includes a `performance` object with only
+  `color_processing_mode`, `update_interval_seconds`, and
+  `brightness_adjustment`. Trusted-LAN HTTP STATUS projects only current state
+  and that whitelisted object; it does not expose credentials, bridge details,
+  filesystem paths, or other internal configuration.
+- The asynchronous single-flight Hue status monitor from commit `7cac8ed`
+  remains unchanged. Capture buffering, sampling geometry, packet encoding,
+  and light-state/lifecycle behavior are also unchanged.
+
+Focused tests distinguish the known lossy legacy witness from direct RGB,
+verify default and opt-in parsing, reject unknown modes and nonzero-brightness
+direct RGB, pin the deployment profile, and validate the exact HTTP status
+shape plus malformed-status rejection. The complete offline suite passed 129
+tests in 3.142 seconds. Deployment configuration validation, Bash syntax for
+all four deployment/rollback scripts, and `systemd-analyze verify` for both
+units also passed.
+
+Rollback is configuration-only after installation: set
+`color_processing_mode = "legacy_hsv"` and
+`update_interval_seconds = 0.05`, then restart `harmonize.service`. Both code
+paths remain tested and available. The implementation does not merge to
+`master`.

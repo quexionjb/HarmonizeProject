@@ -216,6 +216,7 @@ class HarmonizeController:
         update_interval_seconds: float,
         single_light: bool,
         auto_restart_seconds: float,
+        color_processing_mode: str = "legacy_hsv",
         transport_reconnect_attempts: int = 3,
         transport_reconnect_initial_seconds: float = 0.5,
         hue_status_interval_seconds: float = 10.0,
@@ -241,6 +242,7 @@ class HarmonizeController:
         self.update_interval_seconds = update_interval_seconds
         self.single_light = single_light
         self.auto_restart_seconds = auto_restart_seconds
+        self.color_processing_mode = color_processing_mode
         self.transport_reconnect_attempts = transport_reconnect_attempts
         self.transport_reconnect_initial_seconds = (
             transport_reconnect_initial_seconds
@@ -361,6 +363,7 @@ class HarmonizeController:
             brightness_adjustment=self.brightness_adjustment,
             breadth=self.sample_breadth,
             single_light=self.single_light and len(self.area.channels) == 1,
+            color_processing_mode=self.color_processing_mode,
         )
 
     def _transport(self) -> OpenSslDtlsTransport:
@@ -484,6 +487,16 @@ class HarmonizeController:
             self.capture.open()
             frame = self._read_sample().frame
             analyzer = self._analyzer(frame)
+            log_event(
+                self._logger,
+                logging.INFO,
+                "analysis_configured",
+                color_processing_mode=self.color_processing_mode,
+                brightness_adjustment=self.brightness_adjustment,
+                update_interval_seconds=self.update_interval_seconds,
+                width=frame.shape[1],
+                height=frame.shape[0],
+            )
             builder = HueStreamPacketBuilder(self.area.resource_id)
             self._inject("after_capture_ready")
 
